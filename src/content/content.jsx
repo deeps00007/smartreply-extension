@@ -9,7 +9,11 @@ function getPlatform() {
   const h = location.hostname
   if (h === "mail.google.com")              return "gmail"
   if (h === "twitter.com" || h === "x.com") return "twitter"
-  if (h.includes("linkedin.com"))           return "linkedin"
+  if (h.includes("linkedin.com")) {
+    // LinkedIn messaging/DM page or msg compose box
+    if (location.pathname.includes("/messaging/")) return "linkedin-message"
+    return "linkedin"
+  }
   if (h.includes("reddit.com"))             return "reddit"
   if (h.includes("youtube.com"))            return "youtube"
   if (h.includes("web.whatsapp.com") || h === "web.whatsapp.com") return "whatsapp"
@@ -19,7 +23,7 @@ function getPlatform() {
 function getMessageContext(target) {
   const platform = getPlatform()
 
-  if (platform === "whatsapp") {
+  if (platform === "whatsapp" || platform === "linkedin-message") {
     // Enhance mode: read what the user has already typed in the compose box
     const typed = (target.value || target.innerText || "").trim()
     return typed  // may be empty if user hasn't typed yet
@@ -146,8 +150,8 @@ function openPanel(target) {
 
   const text = getMessageContext(target)
   const platform = getPlatform()
-  // WhatsApp enhance mode: pass the typed text as 'enhanceText'
-  const isEnhance = platform === "whatsapp"
+  // WhatsApp / LinkedIn DM enhance mode: pass the typed text as 'enhanceText'
+  const isEnhance = platform === "whatsapp" || platform === "linkedin-message"
 
   panelRoot.render(
     <FloatingPanel
@@ -184,6 +188,8 @@ document.addEventListener("focusin", (event) => {
     (el.tagName === "INPUT" && el.type !== "hidden") ||
     el.isContentEditable
   ) {
-    createAIButton(el)
+    chrome.storage.local.get("smartreply_enabled", (res) => {
+      if (res.smartreply_enabled !== false) createAIButton(el)
+    })
   }
 })

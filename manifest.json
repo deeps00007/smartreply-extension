@@ -3,7 +3,7 @@
   "name": "SmartReply AI",
   "version": "1.0",
   "description": "AI chat and email reply assistant",
-  "permissions": ["activeTab", "scripting"],
+  "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["<all_urls>"],
 
   "action": {

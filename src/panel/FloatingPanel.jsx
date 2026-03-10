@@ -3,7 +3,7 @@ import "./panel.css"
 
 export default function FloatingPanel({ text, enhanceText, platform, onInsert, onClose }) {
 
-  const isEnhance = platform === "whatsapp"   // enhance user's typed message
+  const isEnhance = platform === "whatsapp" || platform === "linkedin-message"
   const isCompose = !isEnhance && !text        // no context = new post
   const [topic, setTopic] = useState("")
   const [userMsg, setUserMsg] = useState(enhanceText || "")  // editable draft for enhance mode
@@ -17,7 +17,8 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
     try {
       let prompt
       if (isEnhance) {
-        prompt = `Fix the grammar and improve the following WhatsApp message. Keep the meaning exactly the same.
+        const msgType = platform === "linkedin-message" ? "LinkedIn message" : "WhatsApp message"
+        prompt = `Fix the grammar and improve the following ${msgType}. Keep the meaning exactly the same.
 
 Original message:
 "${userMsg}"
@@ -61,7 +62,10 @@ Make it natural and human.`
         }
       )
       const data = await res.json()
-      setReply(data.choices[0].message.content)
+      const raw = data.choices[0].message.content.trim()
+      // Strip surrounding quotes the model sometimes adds
+      const clean = raw.replace(/^["'"']+|["'"']+$/g, "").trim()
+      setReply(clean)
     } catch(e) {
       setReply("Error generating reply. Please try again.")
     } finally {
