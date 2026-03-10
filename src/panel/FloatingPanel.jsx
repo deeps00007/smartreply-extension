@@ -1,10 +1,12 @@
 import React, { useState } from "react"
 import "./panel.css"
 
-export default function FloatingPanel({ text, platform, onInsert, onClose }) {
+export default function FloatingPanel({ text, enhanceText, platform, onInsert, onClose }) {
 
-  const isCompose = !text  // no original message = writing from scratch
+  const isEnhance = platform === "whatsapp"   // enhance user's typed message
+  const isCompose = !isEnhance && !text        // no context = new post
   const [topic, setTopic] = useState("")
+  const [userMsg, setUserMsg] = useState(enhanceText || "")  // editable draft for enhance mode
   const [tone, setTone] = useState("Friendly")
   const [language, setLanguage] = useState("English")
   const [reply, setReply] = useState("")
@@ -14,7 +16,17 @@ export default function FloatingPanel({ text, platform, onInsert, onClose }) {
     setLoading(true)
     try {
       let prompt
-      if (isCompose) {
+      if (isEnhance) {
+        prompt = `Fix the grammar and improve the following WhatsApp message. Keep the meaning exactly the same.
+
+Original message:
+"${userMsg}"
+
+Tone: ${tone}
+Language: ${language}
+
+Return only the improved message, nothing else.`
+      } else if (isCompose) {
         prompt = `Write a ${platform === "linkedin" ? "LinkedIn" : platform === "twitter" ? "tweet" : "social media post"} about the following topic.
 
 Topic: "${topic || "general"}"
@@ -65,8 +77,21 @@ Make it natural and human.`
         <button className="panel-close" onClick={onClose}>✕</button>
       </div>
 
-      {/* Reply mode: show the original message */}
-      {!isCompose && <p className="original">{text}</p>}
+      {/* Enhance mode: show editable draft */}
+      {isEnhance && (
+        <div className="panel-field" style={{marginBottom:"10px"}}>
+          <label>Your message (edit before enhancing)</label>
+          <textarea
+            style={{height:"70px", marginTop:"4px"}}
+            value={userMsg}
+            placeholder="Type your message here..."
+            onChange={(e) => setUserMsg(e.target.value)}
+          />
+        </div>
+      )}
+
+      {/* Reply mode: show original message */}
+      {!isCompose && !isEnhance && <p className="original">{text}</p>}
 
       {/* Compose mode: show topic input */}
       {isCompose && (
@@ -102,17 +127,17 @@ Make it natural and human.`
       </div>
 
       <button className="generate" onClick={generateReply} disabled={loading}>
-        {loading ? "Generating..." : isCompose ? "Generate Post" : "Generate Reply"}
+        {loading ? "Enhancing..." : isEnhance ? "Enhance Message" : isCompose ? "Generate Post" : "Generate Reply"}
       </button>
 
       <textarea
         value={reply}
-        placeholder={isCompose ? "Generated post will appear here..." : "Generated reply will appear here..."}
+        placeholder={isEnhance ? "Enhanced message will appear here..." : isCompose ? "Generated post will appear here..." : "Generated reply will appear here..."}
         onChange={(e) => setReply(e.target.value)}
       />
 
       <button className="insert" onClick={() => onInsert(reply)}>
-        {isCompose ? "Insert Post" : "Insert Reply"}
+        {isEnhance ? "Replace Message" : isCompose ? "Insert Post" : "Insert Reply"}
       </button>
 
     </div>

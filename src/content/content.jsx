@@ -20,26 +20,9 @@ function getMessageContext(target) {
   const platform = getPlatform()
 
   if (platform === "whatsapp") {
-    // All incoming messages (from others) use class 'message-in'
-    // The text content is inside [data-testid='msg-container'] .copyable-text
-    const incomingMsgs = document.querySelectorAll(
-      ".message-in [data-testid='msg-container'] .copyable-text, " +
-      ".message-in span.selectable-text.copyable-text"
-    )
-    if (incomingMsgs.length > 0) {
-      // Get the last (most recent) incoming message
-      const last = incomingMsgs[incomingMsgs.length - 1]
-      const txt = last.innerText?.trim()
-      if (txt && txt.length > 0) return txt.slice(0, 1500)
-    }
-    // Fallback: any message row that isn't outgoing
-    const allRows = document.querySelectorAll(".copyable-text")
-    const incoming = [...allRows].filter(el => !el.closest(".message-out"))
-    if (incoming.length > 0) {
-      const txt = incoming[incoming.length - 1].innerText?.trim()
-      if (txt && txt.length > 0) return txt.slice(0, 1500)
-    }
-    return ""
+    // Enhance mode: read what the user has already typed in the compose box
+    const typed = (target.value || target.innerText || "").trim()
+    return typed  // may be empty if user hasn't typed yet
   }
 
   if (platform === "gmail") {
@@ -163,10 +146,13 @@ function openPanel(target) {
 
   const text = getMessageContext(target)
   const platform = getPlatform()
+  // WhatsApp enhance mode: pass the typed text as 'enhanceText'
+  const isEnhance = platform === "whatsapp"
 
   panelRoot.render(
     <FloatingPanel
-      text={text}
+      text={isEnhance ? "" : text}
+      enhanceText={isEnhance ? text : undefined}
       platform={platform}
       onInsert={(reply) => {
         if (target.isContentEditable) {
