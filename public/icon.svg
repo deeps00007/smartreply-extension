@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="url(#grad)"/>
+  
+  <!-- Chat bubble -->
+  <path d="M 35 45 L 35 70 L 40 70 L 45 77 L 45 70 L 75 70 L 75 45 Z" 
+        fill="white" opacity="0.95"/>
+  
+  <!-- AI sparkle/star accent -->
+  <path d="M 85 35 L 87 41 L 93 43 L 87 45 L 85 51 L 83 45 L 77 43 L 83 41 Z" 
+        fill="#ffd700"/>
+  <path d="M 95 55 L 96 59 L 100 60 L 96 61 L 95 65 L 94 61 L 90 60 L 94 59 Z" 
+        fill="#ffd700"/>
+  
+  <!-- Text lines inside bubble -->
+  <line x1="42" y1="52" x2="68" y2="52" stroke="#667eea" stroke-width="2" stroke-linecap="round"/>
+  <line x1="42" y1="59" x2="60" y2="59" stroke="#667eea" stroke-width="2" stroke-linecap="round"/>
+</svg>
