@@ -1,35 +1,40 @@
-import React, { useState } from "react"
+import React, { useState, useRef, useEffect } from "react"
 import "./panel.css"
 
 export default function FloatingPanel({ text, enhanceText, platform, onInsert, onClose }) {
 
   const isEnhance = platform === "whatsapp" || platform === "linkedin-message"
-  const isCompose = !isEnhance && !text        // no context = new post
+  const isCompose = !isEnhance && !text
   const [topic, setTopic] = useState("")
-  const [userMsg, setUserMsg] = useState(enhanceText || "")  // editable draft for enhance mode
+  const [userMsg, setUserMsg] = useState(enhanceText || "")
   const [tone, setTone] = useState("Friendly")
   const [language, setLanguage] = useState("English")
+  const [humanize, setHumanize] = useState(true)
   const [reply, setReply] = useState("")
   const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [inserted, setInserted] = useState(false)
+  const replyRef = useRef(null)
+
+  const humanizeInstruction = humanize
+    ? " Write like a real human — use natural, conversational language with slight imperfections. Vary sentence length, use contractions, and keep it genuine. Do NOT use bullet points or numbered lists unless absolutely necessary."
+    : ""
 
   const generateReply = async () => {
+    if (loading) return
     setLoading(true)
+    setReply("")
+    setCopied(false)
+    setInserted(false)
     try {
       let prompt
       if (isEnhance) {
         const msgType = platform === "linkedin-message" ? "LinkedIn message" : "WhatsApp message"
-        prompt = `Improve the grammar and tone of this ${msgType}. Keep the meaning identical. Output ONLY the improved message with no explanation, no labels, no quotes, no extra text.
-
-${userMsg}
-
-Tone: ${tone}. Language: ${language}.`
+        prompt = `Improve the grammar and tone of this ${msgType}. Keep the meaning identical. Output ONLY the improved message with no explanation, no labels, no quotes, no extra text.${humanizeInstruction}\n\n${userMsg}\n\nTone: ${tone}. Language: ${language}.`
       } else if (isCompose) {
-        prompt = `Write a ${platform === "linkedin" ? "LinkedIn post" : platform === "twitter" ? "tweet" : "social media post"} about: ${topic || "general"}. Tone: ${tone}. Language: ${language}. Output ONLY the post text. No labels, no explanation, no quotes, no commentary.`
+        prompt = `Write a ${platform === "linkedin" ? "LinkedIn post" : platform === "twitter" ? "tweet" : "social media post"} about: ${topic || "general"}. Tone: ${tone}. Language: ${language}. Output ONLY the post text. No labels, no explanation, no quotes, no commentary.${humanizeInstruction}`
       } else {
-        prompt = `Write a reply to this message. Tone: ${tone}. Language: ${language}. Output ONLY the reply text. No labels, no explanation, no quotes, no commentary like "Here's a reply" or "This keeps it...".
-
-Message to reply to:
-${text}`
+        prompt = `Write a reply to this message. Tone: ${tone}. Language: ${language}. Output ONLY the reply text. No labels, no explanation, no quotes, no commentary like "Here's a reply" or "This keeps it...".${humanizeInstruction}\n\nMessage to reply to:\n${text}`
       }
 
       const res = await fetch(
@@ -49,28 +54,21 @@ ${text}`
       const data = await res.json()
       const raw = data.choices[0].message.content.trim()
       const clean = raw
-        // Remove <think>...</think> reasoning blocks (closed)
         .replace(/<think>[\s\S]*?<\/think>/gi, "")
-        // Remove any leftover bare <think> or </think> tags (unclosed)
         .replace(/<\/?think>/gi, "")
-        // Remove --- separator lines
         .replace(/^[-–—]{2,}\s*$/gm, "")
-        // Remove opening AI boilerplate ("Here's a friendly reply to your query:", etc.)
-        .replace(/^(here'?s?\s+(a\s+)?(friendly|professional|casual|polite|helpful|short|brief|quick|concise|warm)?\s*(reply|response|message|answer|post)[^\n]*[:.]?\s*)/gim, "")
-        // Remove greeting lines like "Hi Username," or "Hey there,"
+        .replace(/^(here'?s?\s+(a\s+)?(friendly|professional|casual|polite|helpful|short|brief|quick|concise|warm)?\s*(reply|response|message|answer|post)[^\n]*[:.]\s*)/gim, "")
         .replace(/^(hi|hey|hello|dear)\s+[^\n]{0,40}[,!]?\s*\n?/gim, "")
-        // Remove common AI meta-commentary lines
         .replace(/^(this\s+(keeps|makes|sounds|feels|maintains|reply|message)[^\n]*)/gim, "")
         .replace(/^(note:|tip:|reply:|message:|improved[^\n]*:)/gim, "")
         .replace(/^(sure[,!]?|certainly[,!]?|of course[,!]?|absolutely[,!]?)\s*/gim, "")
-        // Remove closing boilerplate ("Hope this helps", "Let me know if you need more details", etc.)
         .replace(/\n?\s*(hope\s+this\s+helps[^\n]*)/gim, "")
         .replace(/\n?\s*(let\s+me\s+know\s+if\s+you\s+need[^\n]*)/gim, "")
         .replace(/\n?\s*(feel\s+free\s+to\s+(reach\s+out|ask|contact)[^\n]*)/gim, "")
         .replace(/\n?\s*(don'?t\s+hesitate\s+to[^\n]*)/gim, "")
         .replace(/\n?\s*(best\s+(regards|wishes)[,.]?\s*)/gim, "")
+        .replace(/\n?\s*(best\s+of\s+luck[^\n]*)/gim, "")
         .trim()
-        // Strip surrounding quotes or whitespace
         .replace(/^["'\u2018\u2019\u201c\u201d\s]+|["'\u2018\u2019\u201c\u201d\s]+$/g, "")
         .trim()
       setReply(clean)
@@ -81,20 +79,54 @@ ${text}`
     }
   }
 
-  return (
-    <div className="panel">
+  // Auto-scroll output into view when reply arrives
+  useEffect(() => {
+    if (reply && replyRef.current) {
+      replyRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    }
+  }, [reply])
 
+  const handleCopy = async () => {
+    if (!reply) return
+    try {
+      await navigator.clipboard.writeText(reply)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch (_) { }
+  }
+
+  const handleInsert = () => {
+    if (!reply) return
+    onInsert(reply)
+    setInserted(true)
+    setTimeout(() => setInserted(false), 1500)
+  }
+
+  // Ctrl+Enter to generate
+  const handleKeyDown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault()
+      generateReply()
+    }
+  }
+
+  const charCount = reply.length
+
+  return (
+    <div className="panel" onKeyDown={handleKeyDown}>
+
+      {/* Header */}
       <div className="panel-header">
-        <h3>SmartReply AI ✨</h3>
-        <button className="panel-close" onClick={onClose}>✕</button>
+        <h3>SmartReply AI</h3>
+        <button className="panel-close" onClick={onClose} title="Close">✕</button>
       </div>
 
-      {/* Enhance mode: show editable draft */}
+      {/* Enhance mode: editable draft */}
       {isEnhance && (
         <div className="panel-field" style={{ marginBottom: "10px" }}>
-          <label>Your message (edit before enhancing)</label>
+          <label>Your message</label>
           <textarea
-            style={{ height: "70px", marginTop: "4px" }}
+            className="input-area"
             value={userMsg}
             placeholder="Type your message here..."
             onChange={(e) => setUserMsg(e.target.value)}
@@ -102,13 +134,18 @@ ${text}`
         </div>
       )}
 
-      {/* Reply mode: show original message */}
-      {!isCompose && !isEnhance && <p className="original">{text}</p>}
+      {/* Reply mode: context preview */}
+      {!isCompose && !isEnhance && (
+        <div className="context-box">
+          <span className="context-label">Replying to</span>
+          <p className="context-text">{text}</p>
+        </div>
+      )}
 
-      {/* Compose mode: show topic input */}
+      {/* Compose mode: topic */}
       {isCompose && (
         <div className="panel-field" style={{ marginBottom: "10px" }}>
-          <label>What's your post about?</label>
+          <label>Topic</label>
           <input
             type="text"
             className="topic-input"
@@ -119,10 +156,11 @@ ${text}`
         </div>
       )}
 
+      {/* Controls row: Tone + Language */}
       <div className="panel-row">
         <div className="panel-field">
           <label>Tone</label>
-          <select onChange={(e) => setTone(e.target.value)}>
+          <select value={tone} onChange={(e) => setTone(e.target.value)}>
             <option>Friendly</option>
             <option>Professional</option>
             <option>Casual</option>
@@ -130,7 +168,7 @@ ${text}`
         </div>
         <div className="panel-field">
           <label>Language</label>
-          <select onChange={(e) => setLanguage(e.target.value)}>
+          <select value={language} onChange={(e) => setLanguage(e.target.value)}>
             <option>English</option>
             <option>Hindi</option>
             <option>Hinglish</option>
@@ -138,19 +176,73 @@ ${text}`
         </div>
       </div>
 
-      <button className="generate" onClick={generateReply} disabled={loading}>
-        {loading ? "Enhancing..." : isEnhance ? "Enhance Message" : isCompose ? "Generate Post" : "Generate Reply"}
-      </button>
+      {/* Humanize toggle */}
+      <div className="humanize-row">
+        <div className="humanize-label">
+          <span className="humanize-text">Humanize</span>
+        </div>
+        <label className="toggle-switch">
+          <input
+            type="checkbox"
+            checked={humanize}
+            onChange={(e) => setHumanize(e.target.checked)}
+          />
+          <span className="toggle-slider"></span>
+        </label>
+      </div>
 
-      <textarea
-        value={reply}
-        placeholder={isEnhance ? "Enhanced message will appear here..." : isCompose ? "Generated post will appear here..." : "Generated reply will appear here..."}
-        onChange={(e) => setReply(e.target.value)}
-      />
+      {/* Generate + Regenerate */}
+      <div className="generate-row">
+        <button className="generate" onClick={generateReply} disabled={loading}>
+          {loading ? (
+            <span className="loading-content">
+              <span className="spinner"></span>
+              Generating...
+            </span>
+          ) : (
+            isEnhance ? "Enhance" : isCompose ? "Generate Post" : "Generate Reply"
+          )}
+        </button>
+        {reply && !loading && (
+          <button className="regen-btn" onClick={generateReply} title="Regenerate">
+            ↻
+          </button>
+        )}
+      </div>
 
-      <button className="insert" onClick={() => onInsert(reply)}>
-        {isEnhance ? "Replace Message" : isCompose ? "Insert Post" : "Insert Reply"}
-      </button>
+      {/* Output area */}
+      {(reply || loading) && (
+        <div className="output-section" ref={replyRef}>
+          {loading ? (
+            <div className="skeleton-block">
+              <div className="skeleton-line w80"></div>
+              <div className="skeleton-line w100"></div>
+              <div className="skeleton-line w60"></div>
+            </div>
+          ) : (
+            <>
+              <textarea
+                className="output-area"
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+              />
+              <div className="output-footer">
+                <span className="char-count">{charCount} chars</span>
+                <div className="action-buttons">
+                  <button className="action-btn copy-btn" onClick={handleCopy}>
+                    {copied ? "✓ Copied" : "Copy"}
+                  </button>
+                  <button className="action-btn insert-btn" onClick={handleInsert}>
+                    {inserted ? "✓ Done" : isEnhance ? "Replace" : "Insert"}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="panel-hint">Ctrl+Enter to generate</div>
 
     </div>
   )

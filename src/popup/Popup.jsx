@@ -1,14 +1,73 @@
 import React, { useState, useEffect } from "react"
 import { createRoot } from "react-dom/client"
 
+/* ── Inline SVG Icons (16×16) ── */
+const Icon = ({ d, color = "currentColor", size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d={d} />
+  </svg>
+)
+
+const icons = {
+  gmail: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EA4335" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="M22 4L12 13L2 4" />
+    </svg>
+  ),
+  whatsapp: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#25D366" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
+  ),
+  reddit: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF4500" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="14" r="8" />
+      <path d="M12 6V2" />
+      <path d="M12 6l4-2" />
+      <circle cx="9" cy="13" r="1" fill="#FF4500" />
+      <circle cx="15" cy="13" r="1" fill="#FF4500" />
+      <path d="M9 17c1.5 1 4.5 1 6 0" />
+    </svg>
+  ),
+  twitter: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1DA1F2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4l11.7 16h4.3L8.3 4H4z" />
+      <path d="M4 20l6.8-8" />
+      <path d="M20 4l-6.8 8" />
+    </svg>
+  ),
+  linkedin: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0A66C2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6z" />
+      <rect x="2" y="9" width="4" height="12" />
+      <circle cx="4" cy="4" r="2" />
+    </svg>
+  ),
+  youtube: (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF0000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="4" />
+      <polygon points="10,8 16,12 10,16" fill="#FF0000" stroke="none" />
+    </svg>
+  ),
+}
+
 const sites = [
-  { name: "Gmail",     icon: "📧" },
-  { name: "WhatsApp",  icon: "💬" },
-  { name: "Reddit",    icon: "🤖" },
-  { name: "Twitter/X", icon: "🐦" },
-  { name: "LinkedIn",  icon: "💼" },
-  { name: "YouTube",   icon: "▶️" },
+  { name: "Gmail", icon: icons.gmail },
+  { name: "WhatsApp", icon: icons.whatsapp },
+  { name: "Reddit", icon: icons.reddit },
+  { name: "Twitter/X", icon: icons.twitter },
+  { name: "LinkedIn", icon: icons.linkedin },
+  { name: "YouTube", icon: icons.youtube },
 ]
+
+const logoSvg = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <path d="M8 10h8" />
+    <path d="M8 14h4" />
+  </svg>
+)
 
 function Popup() {
   const [enabled, setEnabled] = useState(true)
@@ -30,29 +89,29 @@ function Popup() {
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
-          <div style={styles.logoBox}>✨</div>
+          <div style={styles.logoBox}>{logoSvg}</div>
           <div>
             <div style={styles.title}>SmartReply AI</div>
             <div style={styles.subtitle}>AI-powered reply assistant</div>
           </div>
         </div>
-        {/* Toggle switch */}
-        <div onClick={toggle} style={{...styles.toggle, background: enabled ? "#4f46e5" : "#ccc"}}>
-          <div style={{...styles.toggleThumb, transform: enabled ? "translateX(20px)" : "translateX(2px)"}} />
+        <div onClick={toggle} style={{ ...styles.toggle, background: enabled ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.15)" }}>
+          <div style={{ ...styles.toggleThumb, transform: enabled ? "translateX(18px)" : "translateX(2px)" }} />
         </div>
       </div>
 
-      {/* Status badge */}
-      <div style={{...styles.statusBadge, background: enabled ? "#eef2ff" : "#f5f5f5", color: enabled ? "#4f46e5" : "#999"}}>
-        {enabled ? "🟢 Extension is Active" : "🔴 Extension is Disabled"}
+      {/* Status */}
+      <div style={{ ...styles.statusBadge, background: enabled ? "#f0fdf4" : "#fef2f2", color: enabled ? "#16a34a" : "#dc2626" }}>
+        <span style={{ fontSize: 8, marginRight: 6 }}>{enabled ? "●" : "●"}</span>
+        {enabled ? "Extension is Active" : "Extension is Disabled"}
       </div>
 
       {/* Supported sites */}
-      <div style={styles.sectionTitle}>Works on</div>
+      <div style={styles.sectionTitle}>Supported Platforms</div>
       <div style={styles.siteGrid}>
         {sites.map(s => (
           <div key={s.name} style={styles.siteChip}>
-            <span>{s.icon}</span>
+            {s.icon}
             <span style={styles.siteName}>{s.name}</span>
           </div>
         ))}
@@ -61,7 +120,11 @@ function Popup() {
       {/* How to use */}
       <div style={styles.sectionTitle}>How to use</div>
       <div style={styles.steps}>
-        {["Click any text box on a supported site", 'Press the "AI ✨" button that appears', "Choose tone & language, then generate"].map((step, i) => (
+        {[
+          "Click any text box on a supported site",
+          "Press the SmartReply button that appears",
+          "Choose tone & language, then generate"
+        ].map((step, i) => (
           <div key={i} style={styles.step}>
             <div style={styles.stepNum}>{i + 1}</div>
             <div style={styles.stepText}>{step}</div>
@@ -77,9 +140,9 @@ function Popup() {
 const styles = {
   root: {
     width: 300,
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     background: "#fff",
-    color: "#1a1a1a",
+    color: "#1f2937",
     padding: 0,
     overflow: "hidden",
   },
@@ -87,8 +150,8 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "16px 16px 12px",
-    background: "linear-gradient(135deg, #4f46e5, #7c3aed)",
+    padding: "14px 16px",
+    background: "linear-gradient(135deg, #4f46e5, #6d28d9)",
     color: "#fff",
   },
   headerLeft: {
@@ -97,25 +160,25 @@ const styles = {
     gap: 10,
   },
   logoBox: {
-    width: 36, height: 36,
-    background: "rgba(255,255,255,0.2)",
-    borderRadius: 10,
+    width: 34, height: 34,
+    background: "rgba(255,255,255,0.15)",
+    borderRadius: 8,
     display: "flex", alignItems: "center", justifyContent: "center",
-    fontSize: 18,
   },
   title: {
     fontWeight: 700,
-    fontSize: 15,
+    fontSize: 14,
     color: "#fff",
+    letterSpacing: "-0.2px",
   },
   subtitle: {
     fontSize: 11,
-    color: "rgba(255,255,255,0.75)",
+    color: "rgba(255,255,255,0.7)",
     marginTop: 1,
   },
   toggle: {
-    width: 44, height: 24,
-    borderRadius: 12,
+    width: 40, height: 22,
+    borderRadius: 11,
     cursor: "pointer",
     position: "relative",
     transition: "background 0.25s",
@@ -124,82 +187,82 @@ const styles = {
   toggleThumb: {
     position: "absolute",
     top: 2,
-    width: 20, height: 20,
+    width: 18, height: 18,
     background: "#fff",
     borderRadius: "50%",
-    transition: "transform 0.25s",
-    boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+    transition: "transform 0.25s cubic-bezier(0.4,0,0.2,1)",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
   },
   statusBadge: {
-    margin: "12px 16px 0",
-    padding: "8px 12px",
-    borderRadius: 8,
+    margin: "10px 14px 0",
+    padding: "7px 12px",
+    borderRadius: 6,
     fontSize: 12,
     fontWeight: 600,
     textAlign: "center",
   },
   sectionTitle: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 700,
-    color: "#888",
+    color: "#9ca3af",
     textTransform: "uppercase",
     letterSpacing: "0.6px",
-    padding: "14px 16px 6px",
+    padding: "12px 14px 5px",
   },
   siteGrid: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr 1fr",
-    gap: 6,
-    padding: "0 16px",
+    gap: 5,
+    padding: "0 14px",
   },
   siteChip: {
     display: "flex",
     alignItems: "center",
     gap: 5,
-    background: "#f5f5f5",
-    borderRadius: 8,
-    padding: "6px 8px",
+    background: "#f9fafb",
+    border: "1px solid #f3f4f6",
+    borderRadius: 6,
+    padding: "5px 7px",
     fontSize: 12,
   },
   siteName: {
     fontWeight: 500,
-    fontSize: 11,
-    color: "#333",
+    fontSize: 10.5,
+    color: "#374151",
   },
   steps: {
     display: "flex",
     flexDirection: "column",
-    gap: 6,
-    padding: "0 16px",
+    gap: 5,
+    padding: "0 14px",
   },
   step: {
     display: "flex",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 8,
   },
   stepNum: {
-    width: 20, height: 20,
+    width: 18, height: 18,
     background: "#4f46e5",
     color: "#fff",
     borderRadius: "50%",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: 700,
     display: "flex", alignItems: "center", justifyContent: "center",
     flexShrink: 0,
   },
   stepText: {
     fontSize: 12,
-    color: "#444",
-    paddingTop: 2,
+    color: "#4b5563",
     lineHeight: 1.4,
   },
   footer: {
     textAlign: "center",
-    fontSize: 11,
-    color: "#bbb",
-    padding: "14px 16px 16px",
-    borderTop: "1px solid #f0f0f0",
-    marginTop: 14,
+    fontSize: 10,
+    color: "#d1d5db",
+    padding: "12px 14px 14px",
+    borderTop: "1px solid #f3f4f6",
+    marginTop: 12,
   }
 }
 

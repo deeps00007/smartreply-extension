@@ -7,15 +7,15 @@ let panelRoot = null
 
 function getPlatform() {
   const h = location.hostname
-  if (h === "mail.google.com")              return "gmail"
+  if (h === "mail.google.com") return "gmail"
   if (h === "twitter.com" || h === "x.com") return "twitter"
   if (h.includes("linkedin.com")) {
     // LinkedIn messaging/DM page or msg compose box
     if (location.pathname.includes("/messaging/")) return "linkedin-message"
     return "linkedin"
   }
-  if (h.includes("reddit.com"))             return "reddit"
-  if (h.includes("youtube.com"))            return "youtube"
+  if (h.includes("reddit.com")) return "reddit"
+  if (h.includes("youtube.com")) return "youtube"
   if (h.includes("web.whatsapp.com") || h === "web.whatsapp.com") return "whatsapp"
   return "generic"
 }
@@ -98,7 +98,7 @@ function getMessageContext(target) {
           const txt = found.innerText?.trim()
           if (txt && txt.length > 20) return txt.slice(0, 1500)
         }
-      } catch(_) {}
+      } catch (_) { }
     }
     el = el.parentElement
   }
@@ -115,24 +115,30 @@ function createAIButton(target) {
   if (currentBtn) currentBtn.remove()
 
   const btn = document.createElement("button")
-  btn.innerText = "AI ?"
+  btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>`
   btn.style.cssText = `
     position: fixed;
     z-index: 2147483646;
-    padding: 5px 10px;
+    padding: 6px;
     background: #4f46e5;
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 13px;
-    font-family: sans-serif;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+    font-size: 0;
+    line-height: 0;
+    box-shadow: 0 2px 8px rgba(79,70,229,0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, transform 0.15s;
   `
+  btn.onmouseenter = () => { btn.style.background = "#4338ca"; btn.style.transform = "scale(1.08)" }
+  btn.onmouseleave = () => { btn.style.background = "#4f46e5"; btn.style.transform = "scale(1)" }
 
   const rect = target.getBoundingClientRect()
-  btn.style.top  = (rect.bottom + 6) + "px"
-  btn.style.left = (rect.right - 80) + "px"
+  btn.style.top = (rect.bottom + 4) + "px"
+  btn.style.left = (rect.right - 32) + "px"
 
   btn.onclick = () => openPanel(target)
   document.body.appendChild(btn)
