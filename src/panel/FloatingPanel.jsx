@@ -1,8 +1,10 @@
 import React, { useState } from "react"
 import "./panel.css"
 
-export default function FloatingPanel({text, onInsert, onClose}){
+export default function FloatingPanel({ text, platform, onInsert, onClose }) {
 
+  const isCompose = !text  // no original message = writing from scratch
+  const [topic, setTopic] = useState("")
   const [tone, setTone] = useState("Friendly")
   const [language, setLanguage] = useState("English")
   const [reply, setReply] = useState("")
@@ -11,8 +13,17 @@ export default function FloatingPanel({text, onInsert, onClose}){
   const generateReply = async () => {
     setLoading(true)
     try {
-      const prompt = `
-Generate a reply for the message below.
+      let prompt
+      if (isCompose) {
+        prompt = `Write a ${platform === "linkedin" ? "LinkedIn" : platform === "twitter" ? "tweet" : "social media post"} about the following topic.
+
+Topic: "${topic || "general"}"
+Tone: ${tone}
+Language: ${language}
+
+Make it engaging, natural, and human. Keep it concise.`
+      } else {
+        prompt = `Generate a reply for the message below.
 
 Message:
 "${text}"
@@ -20,8 +31,9 @@ Message:
 Tone: ${tone}
 Language: ${language}
 
-Make it natural and human.
-`
+Make it natural and human.`
+      }
+
       const res = await fetch(
         "https://api.sarvam.ai/v1/chat/completions",
         {
@@ -53,7 +65,22 @@ Make it natural and human.
         <button className="panel-close" onClick={onClose}>✕</button>
       </div>
 
-      {text && <p className="original">{text}</p>}
+      {/* Reply mode: show the original message */}
+      {!isCompose && <p className="original">{text}</p>}
+
+      {/* Compose mode: show topic input */}
+      {isCompose && (
+        <div className="panel-field" style={{marginBottom:"10px"}}>
+          <label>What's your post about?</label>
+          <input
+            type="text"
+            className="topic-input"
+            placeholder="e.g. productivity tips, my new project..."
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+          />
+        </div>
+      )}
 
       <div className="panel-row">
         <div className="panel-field">
@@ -75,17 +102,17 @@ Make it natural and human.
       </div>
 
       <button className="generate" onClick={generateReply} disabled={loading}>
-        {loading ? "Generating..." : "Generate Reply"}
+        {loading ? "Generating..." : isCompose ? "Generate Post" : "Generate Reply"}
       </button>
 
       <textarea
         value={reply}
-        placeholder="Generated reply will appear here..."
+        placeholder={isCompose ? "Generated post will appear here..." : "Generated reply will appear here..."}
         onChange={(e) => setReply(e.target.value)}
       />
 
       <button className="insert" onClick={() => onInsert(reply)}>
-        Insert Reply
+        {isCompose ? "Insert Post" : "Insert Reply"}
       </button>
 
     </div>
