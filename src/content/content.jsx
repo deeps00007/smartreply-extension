@@ -188,8 +188,14 @@ document.addEventListener("focusin", (event) => {
     (el.tagName === "INPUT" && el.type !== "hidden") ||
     el.isContentEditable
   ) {
-    chrome.storage.local.get("smartreply_enabled", (res) => {
-      if (res.smartreply_enabled !== false) createAIButton(el)
-    })
+    try {
+      chrome.storage.local.get("smartreply_enabled", (res) => {
+        if (chrome.runtime.lastError) return  // extension context invalidated
+        if (res.smartreply_enabled !== false) createAIButton(el)
+      })
+    } catch (_) {
+      // chrome.storage unavailable (non-extension context or invalidated) — default to enabled
+      createAIButton(el)
+    }
   }
 })

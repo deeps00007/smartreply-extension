@@ -18,33 +18,18 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
       let prompt
       if (isEnhance) {
         const msgType = platform === "linkedin-message" ? "LinkedIn message" : "WhatsApp message"
-        prompt = `Fix the grammar and improve the following ${msgType}. Keep the meaning exactly the same.
+        prompt = `Improve the grammar and tone of this ${msgType}. Keep the meaning identical. Output ONLY the improved message with no explanation, no labels, no quotes, no extra text.
 
-Original message:
-"${userMsg}"
+${userMsg}
 
-Tone: ${tone}
-Language: ${language}
-
-Return only the improved message, nothing else.`
+Tone: ${tone}. Language: ${language}.`
       } else if (isCompose) {
-        prompt = `Write a ${platform === "linkedin" ? "LinkedIn" : platform === "twitter" ? "tweet" : "social media post"} about the following topic.
-
-Topic: "${topic || "general"}"
-Tone: ${tone}
-Language: ${language}
-
-Make it engaging, natural, and human. Keep it concise.`
+        prompt = `Write a ${platform === "linkedin" ? "LinkedIn post" : platform === "twitter" ? "tweet" : "social media post"} about: ${topic || "general"}. Tone: ${tone}. Language: ${language}. Output ONLY the post text. No labels, no explanation, no quotes, no commentary.`
       } else {
-        prompt = `Generate a reply for the message below.
+        prompt = `Write a reply to this message. Tone: ${tone}. Language: ${language}. Output ONLY the reply text. No labels, no explanation, no quotes, no commentary like "Here's a reply" or "This keeps it...".
 
-Message:
-"${text}"
-
-Tone: ${tone}
-Language: ${language}
-
-Make it natural and human.`
+Message to reply to:
+${text}`
       }
 
       const res = await fetch(
@@ -63,10 +48,33 @@ Make it natural and human.`
       )
       const data = await res.json()
       const raw = data.choices[0].message.content.trim()
-      // Strip surrounding quotes the model sometimes adds
-      const clean = raw.replace(/^["'"']+|["'"']+$/g, "").trim()
+      const clean = raw
+        // Remove <think>...</think> reasoning blocks (closed)
+        .replace(/<think>[\s\S]*?<\/think>/gi, "")
+        // Remove any leftover bare <think> or </think> tags (unclosed)
+        .replace(/<\/?think>/gi, "")
+        // Remove --- separator lines
+        .replace(/^[-–—]{2,}\s*$/gm, "")
+        // Remove opening AI boilerplate ("Here's a friendly reply to your query:", etc.)
+        .replace(/^(here'?s?\s+(a\s+)?(friendly|professional|casual|polite|helpful|short|brief|quick|concise|warm)?\s*(reply|response|message|answer|post)[^\n]*[:.]?\s*)/gim, "")
+        // Remove greeting lines like "Hi Username," or "Hey there,"
+        .replace(/^(hi|hey|hello|dear)\s+[^\n]{0,40}[,!]?\s*\n?/gim, "")
+        // Remove common AI meta-commentary lines
+        .replace(/^(this\s+(keeps|makes|sounds|feels|maintains|reply|message)[^\n]*)/gim, "")
+        .replace(/^(note:|tip:|reply:|message:|improved[^\n]*:)/gim, "")
+        .replace(/^(sure[,!]?|certainly[,!]?|of course[,!]?|absolutely[,!]?)\s*/gim, "")
+        // Remove closing boilerplate ("Hope this helps", "Let me know if you need more details", etc.)
+        .replace(/\n?\s*(hope\s+this\s+helps[^\n]*)/gim, "")
+        .replace(/\n?\s*(let\s+me\s+know\s+if\s+you\s+need[^\n]*)/gim, "")
+        .replace(/\n?\s*(feel\s+free\s+to\s+(reach\s+out|ask|contact)[^\n]*)/gim, "")
+        .replace(/\n?\s*(don'?t\s+hesitate\s+to[^\n]*)/gim, "")
+        .replace(/\n?\s*(best\s+(regards|wishes)[,.]?\s*)/gim, "")
+        .trim()
+        // Strip surrounding quotes or whitespace
+        .replace(/^["'\u2018\u2019\u201c\u201d\s]+|["'\u2018\u2019\u201c\u201d\s]+$/g, "")
+        .trim()
       setReply(clean)
-    } catch(e) {
+    } catch (e) {
       setReply("Error generating reply. Please try again.")
     } finally {
       setLoading(false)
@@ -83,10 +91,10 @@ Make it natural and human.`
 
       {/* Enhance mode: show editable draft */}
       {isEnhance && (
-        <div className="panel-field" style={{marginBottom:"10px"}}>
+        <div className="panel-field" style={{ marginBottom: "10px" }}>
           <label>Your message (edit before enhancing)</label>
           <textarea
-            style={{height:"70px", marginTop:"4px"}}
+            style={{ height: "70px", marginTop: "4px" }}
             value={userMsg}
             placeholder="Type your message here..."
             onChange={(e) => setUserMsg(e.target.value)}
@@ -99,7 +107,7 @@ Make it natural and human.`
 
       {/* Compose mode: show topic input */}
       {isCompose && (
-        <div className="panel-field" style={{marginBottom:"10px"}}>
+        <div className="panel-field" style={{ marginBottom: "10px" }}>
           <label>What's your post about?</label>
           <input
             type="text"
