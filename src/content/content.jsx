@@ -5,23 +5,63 @@ import FloatingPanel from "../panel/FloatingPanel"
 let currentBtn = null
 let panelRoot = null
 
-// Grab the original email text from Gmail's quoted reply block
-function getGmailContext() {
-  // Gmail quote block (reply thread)
-  const quote = document.querySelector(".gmail_quote, .adn.ads, [data-message-id]")
-  if (quote) return quote.innerText.slice(0, 1000).trim()
-  return ""
-}
+// Smart context detection — works on Gmail, Reddit, Twitter, LinkedIn, etc.
+function getMessageContext(target) {
 
-// Detect if we're on Gmail
-function isGmail() {
-  return location.hostname === "mail.google.com"
+  // --- Gmail ---
+  if (location.hostname === "mail.google.com") {
+    // Quoted reply inside compose window
+    const composeWrap = target.closest("[role='dialog'], .M9, .nH, form")
+    if (composeWrap) {
+      const quote = composeWrap.querySelector(".gmail_quote, blockquote")
+      if (quote) return quote.innerText.slice(0, 1500).trim()
+    }
+    // Opened email body in thread view
+    const emailBody = document.querySelector(".a3s.aiL, .ii.gt .a3s, .gs .ii")
+    if (emailBody) return emailBody.innerText.slice(0, 1500).trim()
+  }
+
+  // --- General: walk up DOM to find the message being replied to ---
+  // These selectors cover Reddit, Twitter/X, LinkedIn, YouTube, Slack, etc.
+  const msgSelectors = [
+    // Reddit
+    "[data-testid='comment'], .usertext-body, .md",
+    // Twitter / X
+    "[data-testid='tweetText'], [lang]",
+    // LinkedIn
+    ".feed-shared-update-v2__description, .comments-comment-item__main-content",
+    // YouTube
+    "#content-text",
+    // Generic
+    "article, .message-body, .comment-body, .post-body, .post-content",
+    "p, [class*='content'], [class*='body'], [class*='message'], [class*='text']"
+  ]
+
+  let el = target.parentElement
+  for (let depth = 0; depth < 10; depth++) {
+    if (!el) break
+    for (const selector of msgSelectors) {
+      try {
+        const candidates = el.querySelectorAll(selector)
+        for (const c of candidates) {
+          // Must not be the input itself, must have real text
+          if (!c.contains(target) && !target.contains(c)) {
+            const txt = c.innerText?.trim()
+            if (txt && txt.length > 20) return txt.slice(0, 1500)
+          }
+        }
+      } catch(_) {}
+    }
+    el = el.parentElement
+  }
+
+  // Last resort: whatever is already in the field
+  return (target.value || target.innerText || "").trim()
 }
 
 // Properly insert text into a contenteditable (works with Gmail's editor)
 function insertIntoContentEditable(el, text) {
   el.focus()
-  // Select all existing content and replace
   document.execCommand("selectAll", false, null)
   document.execCommand("insertText", false, text)
 }
@@ -41,7 +81,8 @@ function createAIButton(target) {
     border-radius: 6px;
     cursor: pointer;
     font-size: 13px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    font-family: sans-serif;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
   `
 
   const rect = target.getBoundingClientRect()
@@ -65,10 +106,7 @@ function openPanel(target) {
 
   if (!panelRoot) panelRoot = createRoot(container)
 
-  // For Gmail: use quoted email as context; otherwise use what's in the field
-  const text = isGmail()
-    ? getGmailContext() || target.innerText.trim()
-    : (target.value || target.innerText).trim()
+  const text = getMessageContext(target)
 
   panelRoot.render(
     <FloatingPanel
@@ -77,12 +115,12 @@ function openPanel(target) {
         if (target.isContentEditable) {
           insertIntoContentEditable(target, reply)
         } else if (target.value !== undefined) {
-          target.value = reply
-          // Trigger React/framework onChange listeners
           const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set
           if (nativeInputValueSetter) {
             nativeInputValueSetter.call(target, reply)
             target.dispatchEvent(new Event("input", { bubbles: true }))
+          } else {
+            target.value = reply
           }
         }
       }}
@@ -98,7 +136,6 @@ function openPanel(target) {
 document.addEventListener("focusin", (event) => {
   const el = event.target
 
-  // Skip our own panel UI
   if (el.closest("#smartreply-root")) return
 
   if (
