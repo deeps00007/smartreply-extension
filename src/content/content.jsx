@@ -55,17 +55,62 @@ function getMessageContext(target) {
   }
 
   if (platform === "linkedin") {
-    const commentBox = target.closest(".comments-comment-box, .comments-comment-texteditor, .comments-comment-box-comment")
-    if (commentBox) {
-      let el = commentBox.parentElement
-      for (let i = 0; i < 15; i++) {
-        if (!el) break
-        const postText = el.querySelector(".update-components-text, .feed-shared-update-v2__commentary, .update-components-text__text-view")
-        if (postText && !postText.contains(target)) {
-          const txt = postText.innerText.trim()
+    // ── STEP 1: Are we replying TO a comment?
+    // Reply boxes are nested inside a comment-item element.
+    // Check if any ancestor before the post root is a comment item.
+    const commentItem = target.closest(
+      ".comments-comment-item, .comments-reply-item, [data-id*='comment']"
+    )
+    if (commentItem) {
+      // Grab the text of THAT comment (not the whole post)
+      const commentTextSelectors = [
+        ".comments-comment__main-content",
+        ".update-components-text",
+        ".comments-comment-item__main-content",
+        ".comment-item__content",
+        "span[dir='ltr']",
+      ]
+      for (const sel of commentTextSelectors) {
+        const node = commentItem.querySelector(sel)
+        if (node && !node.contains(target)) {
+          const txt = node.innerText.trim()
+          if (txt.length > 5) return txt.slice(0, 1500)
+        }
+      }
+    }
+
+    // ── STEP 2: Top-level comment on a post → grab the POST text
+    // Walk up to the post root container
+    const postRootSelectors = [
+      ".feed-shared-update-v2",
+      ".occludable-update",
+      "[data-urn*='activity']",
+    ]
+    let postRoot = null
+    let el = target.parentElement
+    for (let i = 0; i < 35; i++) {
+      if (!el) break
+      for (const sel of postRootSelectors) {
+        if (el.matches && el.matches(sel)) { postRoot = el; break }
+      }
+      if (postRoot) break
+      el = el.parentElement
+    }
+    if (postRoot) {
+      const postTextSelectors = [
+        ".update-components-text",
+        ".feed-shared-update-v2__commentary",
+        ".update-components-text__text-view",
+        ".attributed-text-segment-list__content",
+      ]
+      for (const sel of postTextSelectors) {
+        const nodes = postRoot.querySelectorAll(sel)
+        for (const node of nodes) {
+          // Only accept nodes that are NOT inside the comments section
+          if (node.closest(".comments-comments-list, .comments-comment-item, .social-details-social-counts")) continue
+          const txt = node.innerText.trim()
           if (txt.length > 10) return txt.slice(0, 1500)
         }
-        el = el.parentElement
       }
     }
     return ""
@@ -115,32 +160,49 @@ function createAIButton(target) {
   if (currentBtn) currentBtn.remove()
 
   const btn = document.createElement("button")
-  btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 10h8"/><path d="M8 14h4"/></svg>`
-  btn.style.cssText = `
-    position: fixed;
-    z-index: 2147483646;
-    padding: 6px;
-    background: #4f46e5;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 0;
-    line-height: 0;
-    box-shadow: 0 2px 8px rgba(79,70,229,0.35);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, transform 0.15s;
-  `
-  btn.onmouseenter = () => { btn.style.background = "#4338ca"; btn.style.transform = "scale(1.08)" }
-  btn.onmouseleave = () => { btn.style.background = "#4f46e5"; btn.style.transform = "scale(1)" }
+  btn.textContent = "SR"
+  btn.title = "SmartReply"
+  btn.style.cssText = [
+    "position:fixed",
+    "z-index:2147483646",
+    "width:28px",
+    "height:28px",
+    "padding:0",
+    "background:#4f46e5",
+    "color:#fff",
+    "border:none",
+    "border-radius:50%",
+    "cursor:pointer",
+    "font-size:10px",
+    "font-weight:700",
+    "font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif",
+    "line-height:28px",
+    "text-align:center",
+    "box-shadow:0 1px 6px rgba(0,0,0,0.15)",
+    "transition:box-shadow 0.15s,transform 0.15s",
+    "opacity:0.9"
+  ].join(";")
+  btn.onmouseenter = () => {
+    btn.style.opacity = "1"
+    btn.style.boxShadow = "0 2px 10px rgba(79,70,229,0.35)"
+    btn.style.transform = "scale(1.08)"
+  }
+  btn.onmouseleave = () => {
+    btn.style.opacity = "0.9"
+    btn.style.boxShadow = "0 1px 6px rgba(0,0,0,0.15)"
+    btn.style.transform = "scale(1)"
+  }
 
   const rect = target.getBoundingClientRect()
-  btn.style.top = (rect.bottom + 4) + "px"
-  btn.style.left = (rect.right - 32) + "px"
+  btn.style.top = (rect.bottom + 6) + "px"
+  btn.style.left = (rect.right - 34) + "px"
 
-  btn.onclick = () => openPanel(target)
+  btn.onclick = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (target && typeof target.blur === "function") target.blur()
+    openPanel(target)
+  }
   document.body.appendChild(btn)
   currentBtn = btn
 }
@@ -150,6 +212,10 @@ function openPanel(target) {
   if (!container) {
     container = document.createElement("div")
     container.id = "smartreply-root"
+    // Prevent panel interactions from triggering the document focusin listener
+    container.addEventListener("focusin", (e) => e.stopPropagation())
+    container.addEventListener("mousedown", (e) => e.stopPropagation())
+    container.addEventListener("click", (e) => e.stopPropagation())
     document.body.appendChild(container)
   }
   if (!panelRoot) panelRoot = createRoot(container)

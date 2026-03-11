@@ -14,7 +14,55 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [inserted, setInserted] = useState(false)
+  
   const replyRef = useRef(null)
+  const topicInputRef = useRef(null)
+  const msgInputRef = useRef(null)
+
+  // Dragging state
+  const [position, setPosition] = useState({ x: 0, y: 0 })
+  const dragInfo = useRef({ isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0 })
+
+  const handlePointerDown = (e) => {
+    // Only drag when clicking the header itself, not its children (like the close button)
+    if (e.target.closest('.panel-close')) return
+    e.target.setPointerCapture(e.pointerId)
+    dragInfo.current = {
+      isDragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialX: position.x,
+      initialY: position.y
+    }
+  }
+
+  const handlePointerMove = (e) => {
+    if (!dragInfo.current.isDragging) return
+    const dx = e.clientX - dragInfo.current.startX
+    const dy = e.clientY - dragInfo.current.startY
+    setPosition({
+      x: dragInfo.current.initialX + dx,
+      y: dragInfo.current.initialY + dy
+    })
+  }
+
+  const handlePointerUp = (e) => {
+    if (!dragInfo.current.isDragging) return
+    dragInfo.current.isDragging = false
+    e.target.releasePointerCapture(e.pointerId)
+  }
+
+  // Forcefully steal focus after a short delay to defeat aggressive host page focus traps (like LinkedIn/Twitter)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isCompose && topicInputRef.current) {
+        topicInputRef.current.focus()
+      } else if (isEnhance && msgInputRef.current) {
+        msgInputRef.current.focus()
+      }
+    }, 150) // 150ms delay is usually enough to let the host page's event handlers finish
+    return () => clearTimeout(timer)
+  }, [isCompose, isEnhance])
 
   const humanizeInstruction = humanize
     ? " Write like a real human — use natural, conversational language with slight imperfections. Vary sentence length, use contractions, and keep it genuine. Do NOT use bullet points or numbered lists unless absolutely necessary."
@@ -113,10 +161,20 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
   const charCount = reply.length
 
   return (
-    <div className="panel" onKeyDown={handleKeyDown}>
+    <div 
+      className="panel" 
+      onKeyDown={handleKeyDown}
+      style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
+    >
 
       {/* Header */}
-      <div className="panel-header">
+      <div 
+        className="panel-header"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
         <h3>SmartReply AI</h3>
         <button className="panel-close" onClick={onClose} title="Close">✕</button>
       </div>
@@ -126,10 +184,12 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
         <div className="panel-field" style={{ marginBottom: "10px" }}>
           <label>Your message</label>
           <textarea
+            ref={msgInputRef}
             className="input-area"
             value={userMsg}
             placeholder="Type your message here..."
             onChange={(e) => setUserMsg(e.target.value)}
+            autoFocus
           />
         </div>
       )}
@@ -147,11 +207,13 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
         <div className="panel-field" style={{ marginBottom: "10px" }}>
           <label>Topic</label>
           <input
+            ref={topicInputRef}
             type="text"
             className="topic-input"
             placeholder="e.g. productivity tips, my new project..."
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
+            autoFocus
           />
         </div>
       )}

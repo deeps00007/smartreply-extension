@@ -157,6 +157,7 @@
   cursor: pointer !important;
   outline: none !important;
   box-sizing: border-box !important;
+  pointer-events: auto !important;
 }
 
 #smartreply-root .panel-field select:focus {
@@ -368,6 +369,10 @@
   box-sizing: border-box !important;
   white-space: pre-wrap !important;
   overflow-wrap: break-word !important;
+  cursor: text !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  pointer-events: auto !important;
 }
 
 #smartreply-root .output-area:focus {
@@ -493,6 +498,10 @@
   line-height: 1.5 !important;
   box-sizing: border-box !important;
   white-space: pre-wrap !important;
+  cursor: text !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  pointer-events: auto !important;
 }
 
 #smartreply-root .input-area:focus {
@@ -517,6 +526,10 @@
   color: #1f2937 !important;
   outline: none !important;
   box-sizing: border-box !important;
+  cursor: text !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  pointer-events: auto !important;
 }
 
 #smartreply-root .topic-input:focus {
