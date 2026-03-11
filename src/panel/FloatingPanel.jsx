@@ -169,10 +169,7 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
       {/* Header */}
       <div 
         className="panel-header"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
+        onMouseDown={handleMouseDown}
       >
         <h3>{isPromptEnhancer ? "Prompt Enhancer" : "SmartReply AI"}</h3>
         <button className="panel-close" onClick={onClose} title="Close">✕</button>
