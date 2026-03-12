@@ -61,8 +61,8 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
   }, [isCompose, isEnhance, isPromptEnhancer])
 
   const humanizeInstruction = humanize
-    ? " Write like a real human — use natural, conversational language with slight imperfections. Vary sentence length, use contractions, and keep it genuine. Do NOT use bullet points or numbered lists unless absolutely necessary."
-    : ""
+    ? " IMPORTANT: Write like a real human. Be concise (1-3 sentences maximum). Avoid generic agreements ('That's so true', 'I completely agree'). Get straight to the point. Use natural, conversational language. DO NOT sound like an enthusiastic AI giving a speech."
+    : " KEEP IT SHORT. 1-3 sentences maximum."
 
   const generateReply = async () => {
     if (loading) return
@@ -79,9 +79,9 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
         const msgType = platform === "linkedin-message" ? "LinkedIn message" : "WhatsApp message"
         prompt = `Improve the grammar and tone of this ${msgType}. Keep the meaning identical. Output ONLY the improved message with no explanation, no labels, no quotes, no extra text.${humanizeInstruction}\n\n${userMsg}\n\nTone: ${tone}. Language: ${language}.`
       } else if (isCompose) {
-        prompt = `Write a ${platform === "linkedin" ? "LinkedIn post" : platform === "twitter" ? "tweet" : "social media post"} about: ${topic || "general"}. Tone: ${tone}. Language: ${language}. Output ONLY the post text. No labels, no explanation, no quotes, no commentary.${humanizeInstruction}`
+        prompt = `Write a ${platform === "linkedin" ? "short LinkedIn post" : platform === "twitter" ? "brief tweet" : "short social media post"} about: ${topic || "general"}. Tone: ${tone}. Language: ${language}. Output ONLY the post text. No labels, no quotes.${humanizeInstruction}`
       } else {
-        prompt = `Write a reply to this message. Tone: ${tone}. Language: ${language}. Output ONLY the reply text. No labels, no explanation, no quotes, no commentary like "Here's a reply" or "This keeps it...".${humanizeInstruction}\n\nMessage to reply to:\n${text}`
+        prompt = `Write a brief, natural reply to this message. Tone: ${tone}. Language: ${language}. Output ONLY the exact text to type into the reply box. No labels, no quotes. DO NOT start with generic fluff like "That's a great point" or "I totally agree".${humanizeInstruction}\n\nMessage to reply to:\n${text}`
       }
 
       const res = await fetch(
