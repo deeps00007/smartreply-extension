@@ -30,6 +30,13 @@ const copyManifest = {
       js: cs.js.map(f => f.replace("src/content/content.jsx", "content.js")),
       css: ["content.css"]  // Bug fix #2: inject panel styles into pages
     }))
+    
+    // Vite bundles JS entry points to the root
+    if (manifest.background && manifest.background.service_worker === "src/background/index.js") {
+      manifest.background.service_worker = "background.js"
+    }
+    
+    // Vite preserves HTML folder structure
     fs.writeFileSync("dist/manifest.json", JSON.stringify(manifest, null, 2))
   }
 }
@@ -42,6 +49,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: "src/popup/popup.html",  // popup stays as ES module — works fine in extension popup
+        offscreen: "src/offscreen/offscreen.html",
+        background: "src/background/index.js"
       },
       output: {
         entryFileNames: "[name].js"
