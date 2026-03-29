@@ -193,7 +193,7 @@ async function enhancePromptInline(target, btn) {
         model: "sarvam-m",
         messages: [{
           role: "user",
-          content: `You are a prompt engineering expert. Rewrite the following user prompt to be significantly better for AI models. Make it specific, structured, clear, and include all necessary context and constraints. Output ONLY the improved prompt — no explanation, no preamble, no labels.\n\nOriginal prompt:\n${rawPrompt}`
+          content: `Revise the following raw idea into a highly effective prompt for an AI to execute. \nIMPORTANT RULES:\n1. Write ONLY what the user should actually send to the AI to get the best result.\n2. DO NOT include meta-instructions in your output (like "Act as an expert" or "Rewrite this").\n3. DO NOT output labels like "Improved prompt:".\n4. Transform the raw idea into direct instructions (e.g. "Write a list of features..." instead of "The user wants a list...").\n\nRaw idea:\n${rawPrompt}`
         }]
       })
     })
@@ -248,15 +248,22 @@ function createAIButton(target) {
   const platform = getPlatform()
   const isAI = platform.startsWith("ai-")
 
+  const container = document.createElement("div")
+  container.style.cssText = [
+    "position:fixed",
+    "z-index:2147483646",
+    "display: flex",
+    "gap: 6px",
+    "align-items: center",
+    "transition: all 0.15s"
+  ].join(";")
+
   const btn = document.createElement("button")
 
   if (isAI) {
-    // AI platforms: compact "Enhance" pill — no panel, inline action
     btn.textContent = "Enhance"
     btn.title = "Enhance this prompt with AI"
     btn.style.cssText = [
-      "position:fixed",
-      "z-index:2147483646",
       "height:26px",
       "padding:0 10px",
       "background:#4f46e5",
@@ -275,12 +282,9 @@ function createAIButton(target) {
       "white-space:nowrap"
     ].join(";")
   } else {
-    // Regular platforms: SR monogram circle
     btn.textContent = "SR"
     btn.title = "SmartReply"
     btn.style.cssText = [
-      "position:fixed",
-      "z-index:2147483646",
       "width:28px",
       "height:28px",
       "padding:0",
@@ -300,6 +304,27 @@ function createAIButton(target) {
     ].join(";")
   }
 
+  const micBtn = document.createElement("button")
+  micBtn.textContent = "🎙️"
+  micBtn.title = "Dictate (Auto-translates Hindi to English)"
+  micBtn.style.cssText = [
+    "width:28px",
+    "height:28px",
+    "padding:0",
+    "background:#fff",
+    "color:#4f46e5",
+    "border:1px solid #e5e7eb",
+    "border-radius:50%",
+    "cursor:pointer",
+    "font-size:14px",
+    "display:flex",
+    "align-items:center",
+    "justify-content:center",
+    "box-shadow:0 1px 6px rgba(0,0,0,0.1)",
+    "transition:all 0.15s",
+    "opacity:0.9"
+  ].join(";")
+
   btn.onmouseenter = () => {
     if (drag.isDragging) return
     btn.style.opacity = "1"
@@ -312,45 +337,53 @@ function createAIButton(target) {
     btn.style.boxShadow = isAI ? "0 1px 6px rgba(79,70,229,0.3)" : "0 1px 6px rgba(0,0,0,0.15)"
     btn.style.transform = "scale(1)"
   }
+  
+  micBtn.onmouseenter = () => { if (!drag.isDragging) micBtn.style.transform = "scale(1.08)" }
+  micBtn.onmouseleave = () => { if (!drag.isDragging) micBtn.style.transform = "scale(1)" }
 
   const rect = target.getBoundingClientRect()
-  btn.style.top = (rect.bottom + 6) + "px"
-  btn.style.left = isAI ? (rect.right - 88) + "px" : (rect.right - 34) + "px"
+  container.style.top = (rect.bottom + 6) + "px"
+  // Keep the overall group right-aligned
+  container.style.left = isAI ? (rect.right - 120) + "px" : (rect.right - 66) + "px"
 
   // ── Drag support ──
-  const drag = { isDragging: false, startX: 0, startY: 0, origLeft: 0, origTop: 0, hasDragged: false }
+  // ── Drag support ──
+  const drag = { isDragging: false, hasDragged: false }
 
-  btn.addEventListener("pointerdown", (e) => {
+  container.addEventListener("mousedown", (e) => {
     e.stopPropagation()
     drag.isDragging = true
     drag.hasDragged = false
-    drag.startX = e.clientX
-    drag.startY = e.clientY
-    drag.origLeft = parseInt(btn.style.left, 10)
-    drag.origTop  = parseInt(btn.style.top,  10)
-    btn.setPointerCapture(e.pointerId)
-    btn.style.transition = "none"
-    btn.style.cursor = "grabbing"
-  })
+    const startX = e.clientX
+    const startY = e.clientY
+    const origLeft = parseInt(container.style.left, 10)
+    const origTop  = parseInt(container.style.top,  10)
+    container.style.transition = "none"
+    container.style.cursor = "grabbing"
 
-  btn.addEventListener("pointermove", (e) => {
-    if (!drag.isDragging) return
-    const dx = e.clientX - drag.startX
-    const dy = e.clientY - drag.startY
-    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) drag.hasDragged = true
-    btn.style.left = (drag.origLeft + dx) + "px"
-    btn.style.top  = (drag.origTop  + dy) + "px"
-  })
+    const onMove = (ev) => {
+      if (!drag.isDragging) return
+      const dx = ev.clientX - startX
+      const dy = ev.clientY - startY
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) drag.hasDragged = true
+      container.style.left = (origLeft + dx) + "px"
+      container.style.top  = (origTop  + dy) + "px"
+    }
 
-  btn.addEventListener("pointerup", (e) => {
-    drag.isDragging = false
-    btn.style.transition = "all 0.15s"
-    btn.style.cursor = "pointer"
-    btn.releasePointerCapture(e.pointerId)
+    const onUp = () => {
+      drag.isDragging = false
+      container.style.transition = "all 0.15s"
+      container.style.cursor = ""
+      document.removeEventListener("mousemove", onMove)
+      document.removeEventListener("mouseup", onUp)
+    }
+
+    document.addEventListener("mousemove", onMove)
+    document.addEventListener("mouseup", onUp)
   })
 
   btn.addEventListener("click", (e) => {
-    if (drag.hasDragged) { drag.hasDragged = false; return } // ignore click after drag
+    if (drag.hasDragged) { drag.hasDragged = false; return }
     e.preventDefault()
     e.stopPropagation()
     if (isAI) {
@@ -360,8 +393,120 @@ function createAIButton(target) {
       openPanel(target)
     }
   })
-  document.body.appendChild(btn)
-  currentBtn = btn
+
+  let isDictating = false
+
+  if (window.dictationListener) {
+    chrome.runtime.onMessage.removeListener(window.dictationListener)
+  }
+
+  window.dictationListener = async (message) => {
+    if (message.type === 'DICTATION_ERROR') {
+      isDictating = false
+      micBtn.style.width = "auto"
+      micBtn.style.padding = "0 8px"
+      micBtn.style.borderRadius = "14px"
+      micBtn.textContent = "❌ " + message.error
+      setTimeout(() => {
+        micBtn.style.width = "28px"
+        micBtn.style.padding = "0"
+        micBtn.style.borderRadius = "50%"
+        micBtn.textContent = "🎙️"
+        micBtn.style.animation = "none"
+      }, 3000)
+    } else if (message.type === 'DICTATION_END') {
+      isDictating = false
+      micBtn.style.width = "28px"
+      micBtn.style.padding = "0"
+      micBtn.style.borderRadius = "50%"
+      micBtn.textContent = "🎙️"
+      micBtn.style.animation = "none"
+    } else if (message.type === 'DICTATION_RESULT') {
+      let text = message.text
+      if (/[\u0900-\u097F]/.test(text)) {
+        micBtn.style.width = "auto"
+        micBtn.textContent = "⏳ Translating..."
+        micBtn.style.animation = "none"
+        try {
+          const res = await fetch("https://api.sarvam.ai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer sk_o07ycnow_KTGjMr1Z3KBvdS8pIDi4IuUz"
+            },
+            body: JSON.stringify({
+              model: "sarvam-m",
+              messages: [{
+                role: "user",
+                content: `Translate the following Hindi text to natural English. Output ONLY the English text, no explanations, no labels.\n\nText: ${text}`
+              }]
+            })
+          })
+          const data = await res.json()
+          const translated = (data.choices?.[0]?.message?.content || "").trim()
+            .replace(/<think>[\s\S]*?<\/think>/gi, "")
+            .replace(/<\/?think>/gi, "")
+            .trim()
+          if (translated) text = translated
+        } catch (err) {}
+        if (isDictating) {
+          micBtn.style.width = "auto"
+          micBtn.textContent = "🔴 Listening"
+          micBtn.style.animation = "pulse 1.5s infinite"
+        }
+      }
+      
+      const prefix = target.value && !target.value.endsWith(" ") ? " " : ""
+      if (target.isContentEditable) {
+        target.focus()
+        document.execCommand("insertText", false, prefix + text + " ")
+      } else {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set
+        const currentVal = target.value || ""
+        const newVal = currentVal + (currentVal && !currentVal.endsWith(" ") ? " " : "") + text + " "
+        if (setter) {
+          setter.call(target, newVal)
+          target.dispatchEvent(new Event("input", { bubbles: true }))
+        } else {
+          target.value = newVal
+        }
+      }
+    }
+  }
+
+  chrome.runtime.onMessage.addListener(window.dictationListener)
+
+  micBtn.addEventListener("click", (e) => {
+    if (drag.hasDragged) { drag.hasDragged = false; return }
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (isDictating) {
+      chrome.runtime.sendMessage({ type: "STOP_DICTATION" })
+      return
+    }
+
+    isDictating = true
+    micBtn.style.width = "auto"
+    micBtn.style.padding = "0 8px"
+    micBtn.style.borderRadius = "14px"
+    micBtn.textContent = "🔴 Listening"
+    micBtn.style.animation = "pulse 1.5s infinite"
+    
+    if (!document.getElementById("mic-pulse-style")) {
+      const style = document.createElement("style")
+      style.id = "mic-pulse-style"
+      style.textContent = "@keyframes pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }"
+      document.head.appendChild(style)
+    }
+
+    chrome.runtime.sendMessage({ type: "START_DICTATION" }, () => {})
+  })
+
+  container.appendChild(btn)
+  container.appendChild(micBtn)
+  document.body.appendChild(container)
+  currentBtn = container
 }
 
 function openPanel(target) {
