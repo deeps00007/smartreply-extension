@@ -74,7 +74,7 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
       let prompt
       if (isPromptEnhancer) {
         const userPromptText = userMsg.trim() || topic.trim()
-        prompt = `You are a prompt engineering expert. Rewrite the following user prompt to be significantly better for AI models. Make it specific, structured, clear, and include all necessary context and constraints. Output ONLY the improved prompt — no explanation, no labels, no meta-commentary.\n\nOriginal prompt:\n${userPromptText}`
+        prompt = `Revise the following raw idea into a highly effective prompt for an AI to execute. \nIMPORTANT RULES:\n1. Write ONLY what the user should actually send to the AI to get the best result.\n2. DO NOT include meta-instructions in your output (like "Act as an expert" or "Rewrite this").\n3. DO NOT output labels like "Improved prompt:".\n4. Transform the raw idea into direct instructions (e.g. "Write a list of features..." instead of "The user wants a list...").\n\nRaw idea:\n${userPromptText}`
       } else if (isEnhance) {
         const msgType = platform === "linkedin-message" ? "LinkedIn message" : "WhatsApp message"
         prompt = `Improve the grammar and tone of this ${msgType}. Keep the meaning identical. Output ONLY the improved message with no explanation, no labels, no quotes, no extra text.${humanizeInstruction}\n\n${userMsg}\n\nTone: ${tone}. Language: ${language}.`
