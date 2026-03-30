@@ -5,6 +5,25 @@ import FloatingPanel from "../panel/FloatingPanel"
 let currentBtn = null
 let panelRoot = null
 
+// Global dictation state bindings
+let globalIsDictating = false
+let globalMediaRecorder = null
+let globalAudioChunks = []
+let globalMicStream = null
+
+function forceStopDictation() {
+  if (globalIsDictating) {
+    if (globalMediaRecorder && globalMediaRecorder.state !== "inactive") {
+      globalMediaRecorder.stop()
+    }
+    if (globalMicStream) {
+      globalMicStream.getTracks().forEach(t => t.stop())
+      globalMicStream = null
+    }
+    globalIsDictating = false
+  }
+}
+
 function getPlatform() {
   const h = location.hostname
   if (h === "mail.google.com") return "gmail"
@@ -244,7 +263,10 @@ async function enhancePromptInline(target, btn) {
 }
 
 function createAIButton(target) {
-  if (currentBtn) currentBtn.remove()
+  if (currentBtn) {
+    forceStopDictation() // Instantly shut down the mic if the user clicks away abruptly
+    currentBtn.remove()
+  }
   const platform = getPlatform()
   const isAI = platform.startsWith("ai-")
 
@@ -394,113 +416,135 @@ function createAIButton(target) {
     }
   })
 
-  let isDictating = false
-
-  if (window.dictationListener) {
-    chrome.runtime.onMessage.removeListener(window.dictationListener)
+  if (!document.getElementById("mic-pulse-style")) {
+    const style = document.createElement("style")
+    style.id = "mic-pulse-style"
+    style.textContent = "@keyframes pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }"
+    document.head.appendChild(style)
   }
 
-  window.dictationListener = async (message) => {
-    if (message.type === 'DICTATION_ERROR') {
-      isDictating = false
-      micBtn.style.width = "auto"
-      micBtn.style.padding = "0 8px"
-      micBtn.style.borderRadius = "14px"
-      micBtn.textContent = "❌ " + message.error
-      setTimeout(() => {
-        micBtn.style.width = "28px"
-        micBtn.style.padding = "0"
-        micBtn.style.borderRadius = "50%"
-        micBtn.textContent = "🎙️"
-        micBtn.style.animation = "none"
-      }, 3000)
-    } else if (message.type === 'DICTATION_END') {
-      isDictating = false
-      micBtn.style.width = "28px"
-      micBtn.style.padding = "0"
-      micBtn.style.borderRadius = "50%"
-      micBtn.textContent = "🎙️"
-      micBtn.style.animation = "none"
-    } else if (message.type === 'DICTATION_RESULT') {
-      let text = message.text
-      if (/[\u0900-\u097F]/.test(text)) {
-        micBtn.style.width = "auto"
-        micBtn.textContent = "⏳ Translating..."
-        micBtn.style.animation = "none"
-        try {
-          const res = await fetch("https://api.sarvam.ai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": "Bearer sk_o07ycnow_KTGjMr1Z3KBvdS8pIDi4IuUz"
-            },
-            body: JSON.stringify({
-              model: "sarvam-m",
-              messages: [{
-                role: "user",
-                content: `Translate the following Hindi text to natural English. Output ONLY the English text, no explanations, no labels.\n\nText: ${text}`
-              }]
-            })
-          })
-          const data = await res.json()
-          const translated = (data.choices?.[0]?.message?.content || "").trim()
-            .replace(/<think>[\s\S]*?<\/think>/gi, "")
-            .replace(/<\/?think>/gi, "")
-            .trim()
-          if (translated) text = translated
-        } catch (err) {}
-        if (isDictating) {
-          micBtn.style.width = "auto"
-          micBtn.textContent = "🔴 Listening"
-          micBtn.style.animation = "pulse 1.5s infinite"
-        }
-      }
-      
-      const prefix = target.value && !target.value.endsWith(" ") ? " " : ""
-      if (target.isContentEditable) {
-        target.focus()
-        document.execCommand("insertText", false, prefix + text + " ")
+  const resetMicUI = () => {
+    globalIsDictating = false
+    micBtn.style.width = "28px"
+    micBtn.style.padding = "0"
+    micBtn.style.borderRadius = "50%"
+    micBtn.textContent = "🎙️"
+    micBtn.style.animation = "none"
+  }
+
+  const insertText = (text) => {
+    const prefix = target.value && !target.value.endsWith(" ") ? " " : ""
+    if (target.isContentEditable) {
+      target.focus()
+      document.execCommand("insertText", false, prefix + text + " ")
+    } else {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set
+      const currentVal = target.value || ""
+      const newVal = currentVal + (currentVal && !currentVal.endsWith(" ") ? " " : "") + text + " "
+      if (setter) {
+        setter.call(target, newVal)
+        target.dispatchEvent(new Event("input", { bubbles: true }))
       } else {
-        const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set
-        const currentVal = target.value || ""
-        const newVal = currentVal + (currentVal && !currentVal.endsWith(" ") ? " " : "") + text + " "
-        if (setter) {
-          setter.call(target, newVal)
-          target.dispatchEvent(new Event("input", { bubbles: true }))
-        } else {
-          target.value = newVal
-        }
+        target.value = newVal
       }
     }
   }
 
-  chrome.runtime.onMessage.addListener(window.dictationListener)
+  const processTranscript = async (text) => {
+    if (/[\u0900-\u097F]/.test(text)) {
+      micBtn.style.width = "auto"
+      micBtn.textContent = "⏳ Translating..."
+      try {
+        const res = await fetch("https://api.sarvam.ai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer sk_o07ycnow_KTGjMr1Z3KBvdS8pIDi4IuUz"
+          },
+          body: JSON.stringify({
+            model: "sarvam-m",
+            messages: [{
+              role: "user",
+              content: `Translate the following Hindi text to natural English. Output ONLY the English text, no explanations, no labels.\n\nText: ${text}`
+            }]
+          })
+        })
+        const data = await res.json()
+        const translated = (data.choices?.[0]?.message?.content || "").trim()
+          .replace(/<think>[\s\S]*?<\/think>/gi, "")
+          .replace(/<\/?think>/gi, "")
+          .trim()
+        if (translated) text = translated
+      } catch (err) {}
+    }
+    insertText(text)
+    resetMicUI()
+  }
 
-  micBtn.addEventListener("click", (e) => {
+  micBtn.addEventListener("click", async (e) => {
     if (drag.hasDragged) { drag.hasDragged = false; return }
     e.preventDefault()
     e.stopPropagation()
     
-    if (isDictating) {
-      chrome.runtime.sendMessage({ type: "STOP_DICTATION" })
+    // Stop Dictation
+    if (globalIsDictating) {
+      forceStopDictation()
       return
     }
 
-    isDictating = true
+    // Start Dictation
+    try {
+      globalMicStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch (err) {
+      micBtn.style.width = "auto"
+      micBtn.textContent = "❌ Mic Denied"
+      setTimeout(resetMicUI, 3000)
+      return
+    }
+
+    globalIsDictating = true
     micBtn.style.width = "auto"
     micBtn.style.padding = "0 8px"
     micBtn.style.borderRadius = "14px"
     micBtn.textContent = "🔴 Listening"
     micBtn.style.animation = "pulse 1.5s infinite"
-    
-    if (!document.getElementById("mic-pulse-style")) {
-      const style = document.createElement("style")
-      style.id = "mic-pulse-style"
-      style.textContent = "@keyframes pulse { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }"
-      document.head.appendChild(style)
+
+    globalAudioChunks = []
+    globalMediaRecorder = new MediaRecorder(globalMicStream)
+
+    globalMediaRecorder.ondataavailable = (ev) => {
+      if (ev.data.size > 0) globalAudioChunks.push(ev.data)
     }
 
-    chrome.runtime.sendMessage({ type: "START_DICTATION" }, () => {})
+    globalMediaRecorder.onstop = async () => {
+      micBtn.textContent = "⏳ Transcribing..."
+      micBtn.style.animation = "none"
+
+      const audioBlob = new Blob(globalAudioChunks, { type: 'audio/webm' })
+      const formData = new FormData()
+      formData.append("file", audioBlob, "recording.webm")
+      
+      try {
+        const res = await fetch("https://api.sarvam.ai/speech-to-text-translate", {
+          method: "POST",
+          headers: {
+            "api-subscription-key": "sk_o07ycnow_KTGjMr1Z3KBvdS8pIDi4IuUz"
+          },
+          body: formData
+        })
+        if (!res.ok) throw new Error("API Failed")
+        const data = await res.json()
+        const transcript = data.transcript || data.text || ""
+        if (!transcript) throw new Error("Empty Transcript")
+        
+        await processTranscript(transcript)
+      } catch (err) {
+        micBtn.textContent = "❌ Error"
+        setTimeout(resetMicUI, 3000)
+      }
+    }
+
+    globalMediaRecorder.start()
   })
 
   container.appendChild(btn)
@@ -579,6 +623,9 @@ document.addEventListener("focusin", (event) => {
   clearTimeout(focusTimer)
   focusTimer = setTimeout(() => {
     try {
+      // Abort silently if the extension was reloaded/updated to prevent context crashes
+      if (!chrome.runtime?.id) return;
+      
       chrome.storage.local.get("smartreply_enabled", (res) => {
         if (chrome.runtime.lastError) return // extension invalidated — silently bail
         if (res.smartreply_enabled !== false) createAIButton(el)

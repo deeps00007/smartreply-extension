@@ -6,19 +6,13 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "storage",
-    "offscreen",
-    "audioCapture"
+    "storage"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
   "action": {
     "default_popup": "src/popup/popup.html"
-  },
-  "background": {
-    "service_worker": "background.js",
-    "type": "module"
   },
   "content_scripts": [
     {
@@ -38,15 +32,5 @@
     "16": "icon16.png",
     "48": "icon48.png",
     "128": "icon128.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "src/offscreen/offscreen.html"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ]
+  }
 }
