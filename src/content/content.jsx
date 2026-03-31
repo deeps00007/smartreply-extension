@@ -11,10 +11,22 @@ let globalMediaRecorder = null
 let globalAudioChunks = []
 let globalMicStream = null
 
+// Audio API variables
+let globalAudioContext = null
+let globalAnimFrame = null
+
+const premiumMicSVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>`;
+const premiumSpinnerSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation:sr-spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>`;
+
 function forceStopDictation() {
   if (globalIsDictating) {
     if (globalMediaRecorder && globalMediaRecorder.state !== "inactive") {
       globalMediaRecorder.stop()
+    }
+    cancelAnimationFrame(globalAnimFrame)
+    if (globalAudioContext && globalAudioContext.state !== "closed") {
+      globalAudioContext.close().catch(() => {})
+      globalAudioContext = null
     }
     if (globalMicStream) {
       globalMicStream.getTracks().forEach(t => t.stop())
@@ -327,7 +339,7 @@ function createAIButton(target) {
   }
 
   const micBtn = document.createElement("button")
-  micBtn.textContent = "🎙️"
+  micBtn.innerHTML = premiumMicSVG
   micBtn.title = "Dictate (Auto-translates Hindi to English)"
   micBtn.style.cssText = [
     "width:28px",
@@ -425,11 +437,24 @@ function createAIButton(target) {
 
   const resetMicUI = () => {
     globalIsDictating = false
-    micBtn.style.width = "28px"
-    micBtn.style.padding = "0"
-    micBtn.style.borderRadius = "50%"
-    micBtn.textContent = "🎙️"
-    micBtn.style.animation = "none"
+    micBtn.innerHTML = premiumMicSVG
+    micBtn.style.cssText = [
+      "width:28px",
+      "height:28px",
+      "padding:0",
+      "background:#fff",
+      "color:#4f46e5",
+      "border:1px solid #e5e7eb",
+      "border-radius:50%",
+      "cursor:pointer",
+      "font-size:14px",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "box-shadow:0 1px 6px rgba(0,0,0,0.1)",
+      "transition:all 0.15s",
+      "opacity:0.9"
+    ].join(";")
   }
 
   const insertText = (text) => {
@@ -453,7 +478,14 @@ function createAIButton(target) {
   const processTranscript = async (text) => {
     if (/[\u0900-\u097F]/.test(text)) {
       micBtn.style.width = "auto"
-      micBtn.textContent = "⏳ Translating..."
+      micBtn.innerHTML = premiumSpinnerSVG
+      micBtn.style.cssText = [
+        "width:28px", "height:28px", "padding:0", "background:#111",
+        "color:#fff", "border:1.5px solid rgba(255,255,255,0.7)", "border-radius:50%",
+        "display:flex", "align-items:center",
+        "justify-content:center", "box-shadow:0 4px 12px rgba(0,0,0,0.3)", "cursor:default"
+      ].join(";")
+
       try {
         const res = await fetch("https://api.sarvam.ai/v1/chat/completions", {
           method: "POST",
@@ -503,11 +535,80 @@ function createAIButton(target) {
     }
 
     globalIsDictating = true
-    micBtn.style.width = "auto"
-    micBtn.style.padding = "0 8px"
-    micBtn.style.borderRadius = "14px"
-    micBtn.textContent = "🔴 Listening"
-    micBtn.style.animation = "pulse 1.5s infinite"
+
+    // Visualizer UI mapping
+    micBtn.style.cssText = [
+      "width:auto", 
+      "height:32px", 
+      "padding:0 12px 0 10px", 
+      "background:#111",
+      "border:1.5px solid rgba(255,255,255,0.7)", 
+      "border-radius:999px",
+      "cursor:pointer", 
+      "display:flex", 
+      "align-items:center",
+      "gap:8px", 
+      "transition:all 0.15s", 
+      "box-shadow:0 4px 12px rgba(0,0,0,0.3)"
+    ].join(";")
+
+    const iconHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
+        <path d="M12 2L3 14H10L8 22L19 10H12L14 2Z" fill="url(#boltGrad)" stroke="none"/>
+        <defs>
+          <linearGradient id="boltGrad" x1="5" y1="2" x2="19" y2="22" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#fbbf24"/>
+            <stop offset="0.5" stop-color="#f59e0b"/>
+            <stop offset="0.51" stop-color="#3b82f6"/>
+            <stop offset="1" stop-color="#2563eb"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    `;
+
+    const barsHTML = `
+      <div id="sr-visualizer" style="display:flex; align-items:center; gap:3px; height:16px;">
+        ${[1,2,3,4,5,6].map(() => '<div class="sr-bar" style="width:3.5px; height:4px; background:#fff; border-radius:4px; transition:height 0.05s linear;"></div>').join('')}
+      </div>
+    `;
+
+    micBtn.innerHTML = iconHTML + barsHTML;
+
+    // Start Web Audio Analyser
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    globalAudioContext = new AudioContextClass();
+    const analyser = globalAudioContext.createAnalyser();
+    const source = globalAudioContext.createMediaStreamSource(globalMicStream);
+    source.connect(analyser);
+    
+    analyser.fftSize = 64; 
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    const bars = micBtn.querySelectorAll(".sr-bar");
+    let smoothedHeights = [4,4,4,4,4,4];
+
+    function drawVisualizer() {
+      if (!globalIsDictating) return;
+      globalAnimFrame = requestAnimationFrame(drawVisualizer);
+      
+      analyser.getByteFrequencyData(dataArray);
+      // Sample 6 spread out low/mid frequencies representing voice
+      const sampleIndices = [2, 4, 6, 8, 10, 12];
+      
+      for (let i = 0; i < 6; i++) {
+        const val = dataArray[sampleIndices[i]]; // 0 to 255
+        // Map native 0-255 amplitudes to simple 4px-16px heights
+        const targetHeight = 4 + (val / 255) * 12; 
+        
+        // Very fast and springy easing equation
+        smoothedHeights[i] = smoothedHeights[i] * 0.7 + targetHeight * 0.3;
+        
+        if (bars[i]) {
+          bars[i].style.height = `${smoothedHeights[i]}px`;
+        }
+      }
+    }
+    drawVisualizer();
 
     globalAudioChunks = []
     globalMediaRecorder = new MediaRecorder(globalMicStream)
@@ -517,8 +618,14 @@ function createAIButton(target) {
     }
 
     globalMediaRecorder.onstop = async () => {
-      micBtn.textContent = "⏳ Transcribing..."
-      micBtn.style.animation = "none"
+      cancelAnimationFrame(globalAnimFrame)
+      micBtn.innerHTML = premiumSpinnerSVG
+      micBtn.style.cssText = [
+        "width:28px", "height:28px", "padding:0", "background:#111",
+        "color:#fff", "border:1.5px solid rgba(255,255,255,0.7)", "border-radius:50%",
+        "display:flex", "align-items:center",
+        "justify-content:center", "box-shadow:0 4px 12px rgba(0,0,0,0.3)", "cursor:default"
+      ].join(";")
 
       const audioBlob = new Blob(globalAudioChunks, { type: 'audio/webm' })
       const formData = new FormData()
