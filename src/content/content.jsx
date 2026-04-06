@@ -748,3 +748,56 @@ document.addEventListener("focusout", () => {
   lastFocusTarget = null
   clearTimeout(focusTimer)
 })
+
+let currentPttKey = { code: "F5", key: "F5", ctrl: false, alt: false, shift: false, meta: false }
+let isHoldingPtt = false
+
+chrome.storage.local.get("smartreply_ptt", (res) => {
+  if (res.smartreply_ptt) currentPttKey = res.smartreply_ptt
+})
+
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.smartreply_ptt) currentPttKey = changes.smartreply_ptt.newValue
+})
+
+const isPttMatch = (e) => {
+  return e.code === currentPttKey.code &&
+         !!e.ctrlKey === currentPttKey.ctrl &&
+         !!e.altKey === currentPttKey.alt &&
+         !!e.shiftKey === currentPttKey.shift &&
+         !!e.metaKey === currentPttKey.meta;
+}
+
+document.addEventListener("keydown", (e) => {
+  if (isPttMatch(e)) {
+    // If we're already recording, trap hotkey to prevent browser actions
+    if (globalIsDictating) {
+      e.preventDefault()
+    } else {
+      // If a text field is selected and the SmartReply tool is active
+      if (lastFocusTarget && currentBtn) {
+        if (document.activeElement === lastFocusTarget || lastFocusTarget.contains(document.activeElement) || document.activeElement === document.body) {
+          e.preventDefault()
+          if (!isHoldingPtt) {
+            isHoldingPtt = true
+            const mic = currentBtn.querySelector("button:last-child")
+            if (mic) mic.click()
+          }
+        }
+      }
+    }
+  }
+})
+
+document.addEventListener("keyup", (e) => {
+  // Always stop recording if they let go of the core key
+  if (e.code === currentPttKey.code) {
+    if (isHoldingPtt) {
+      isHoldingPtt = false
+      if (globalIsDictating && currentBtn) {
+         const mic = currentBtn.querySelector("button:last-child")
+         if (mic) mic.click() // stop trigger
+      }
+    }
+  }
+})

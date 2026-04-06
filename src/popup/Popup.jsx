@@ -72,16 +72,64 @@ const logoSvg = (
 function Popup() {
   const [enabled, setEnabled] = useState(true)
 
+  const defaultPtt = { code: "F5", key: "F5", ctrl: false, alt: false, shift: false, meta: false }
+  const [ptt, setPtt] = useState(defaultPtt)
+  const [recording, setRecording] = useState(false)
+
   useEffect(() => {
-    chrome.storage.local.get("smartreply_enabled", (res) => {
+    chrome.storage.local.get(["smartreply_enabled", "smartreply_ptt"], (res) => {
       setEnabled(res.smartreply_enabled !== false)
+      if (res.smartreply_ptt) setPtt(res.smartreply_ptt)
     })
   }, [])
+
+  useEffect(() => {
+    if (!recording) return;
+
+    const handleKeyDown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Ignore if ONLY a modifier is pressed (wait for the actual key)
+      if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph'].includes(e.key)) return;
+
+      const newPtt = {
+        code: e.code,
+        key: e.key,
+        ctrl: e.ctrlKey,
+        alt: e.altKey,
+        shift: e.shiftKey,
+        meta: e.metaKey
+      };
+      
+      setPtt(newPtt);
+      chrome.storage.local.set({ smartreply_ptt: newPtt });
+      setRecording(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [recording]);
 
   const toggle = () => {
     const next = !enabled
     setEnabled(next)
     chrome.storage.local.set({ smartreply_enabled: next })
+  }
+
+  const formatPtt = (p) => {
+    if (!p) return "";
+    let parts = [];
+    if (p.ctrl) parts.push("Ctrl");
+    if (p.alt) parts.push("Alt");
+    if (p.shift) parts.push("Shift");
+    if (p.meta) parts.push("Win/Cmd");
+    
+    let k = p.key;
+    if (!k) k = p.code;
+    if (k && k.length === 1) k = k.toUpperCase();
+    if (k === " ") k = "Space";
+    parts.push(k);
+    return parts.join(" + ");
   }
 
   return (
@@ -92,7 +140,7 @@ function Popup() {
           <div style={styles.logoBox}>{logoSvg}</div>
           <div>
             <div style={styles.title}>SmartReply AI</div>
-            <div style={styles.subtitle}>AI-powered reply assistant</div>
+            <div style={styles.subtitle}>AI Reply & Voice Assistant</div>
           </div>
         </div>
         <div onClick={toggle} style={{ ...styles.toggle, background: enabled ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.15)" }}>
@@ -117,13 +165,25 @@ function Popup() {
         ))}
       </div>
 
+      {/* Settings */}
+      <div style={styles.sectionTitle}>Settings</div>
+      <div style={styles.settingRow}>
+        <div style={styles.settingLabel}>Push-to-Talk Shortcut</div>
+        <button 
+          onClick={() => setRecording(true)} 
+          style={{...styles.hotkeyBtn, background: recording ? "#e0e7ff" : "#f3f4f6", color: recording ? "#4f46e5" : "#374151"}}
+        >
+          {recording ? "Listening..." : formatPtt(ptt)}
+        </button>
+      </div>
+
       {/* How to use */}
       <div style={styles.sectionTitle}>How to use</div>
       <div style={styles.steps}>
         {[
-          "Click any text box on a supported site",
-          "Press the SmartReply button that appears",
-          "Choose tone & language, then generate"
+          "Click inside any text box on a supported site",
+          "Click the SR button to generate AI text replies",
+          `Hold [${formatPtt(ptt)}] on your keyboard to instantly dictate voice`
         ].map((step, i) => (
           <div key={i} style={styles.step}>
             <div style={styles.stepNum}>{i + 1}</div>
@@ -208,6 +268,26 @@ const styles = {
     textTransform: "uppercase",
     letterSpacing: "0.6px",
     padding: "12px 14px 5px",
+  },
+  settingRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "0 14px 4px",
+  },
+  settingLabel: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: "#4b5563",
+  },
+  hotkeyBtn: {
+    border: "1px solid #d1d5db",
+    borderRadius: 6,
+    padding: "4px 8px",
+    fontSize: 10,
+    fontWeight: 700,
+    cursor: "pointer",
+    transition: "all 0.15s",
   },
   siteGrid: {
     display: "grid",
