@@ -1,8 +1,10 @@
 import React from "react"
 import { createRoot } from "react-dom/client"
 import FloatingPanel from "../panel/FloatingPanel"
+import { apiCall, uploadCall } from "../shared/api.js"
 
 let currentBtn = null
+let currentBtnTarget = null
 let panelRoot = null
 
 // Global dictation state bindings
@@ -17,6 +19,14 @@ let globalAnimFrame = null
 
 const premiumMicSVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>`;
 const premiumSpinnerSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation:sr-spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>`;
+
+function getApiKey() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get("smartreply_api_key", (res) => {
+      resolve(res.smartreply_api_key || "")
+    })
+  })
+}
 
 function forceStopDictation() {
   if (globalIsDictating) {
@@ -60,9 +70,8 @@ function getMessageContext(target) {
   const platform = getPlatform()
 
   if (platform === "whatsapp" || platform === "linkedin-message") {
-    // Enhance mode: read what the user has already typed in the compose box
-    const typed = (target.value || target.innerText || "").trim()
-    return typed  // may be empty if user hasn't typed yet
+    // User picks Enhance mode manually; context extraction here is unreliable
+    return ""
   }
 
   // AI Prompt Enhancer mode — read whatever prompt the user has typed
@@ -97,13 +106,10 @@ function getMessageContext(target) {
 
   if (platform === "linkedin") {
     // ── STEP 1: Are we replying TO a comment?
-    // Reply boxes are nested inside a comment-item element.
-    // Check if any ancestor before the post root is a comment item.
     const commentItem = target.closest(
       ".comments-comment-item, .comments-reply-item, [data-id*='comment']"
     )
     if (commentItem) {
-      // Grab the text of THAT comment (not the whole post)
       const commentTextSelectors = [
         ".comments-comment__main-content",
         ".update-components-text",
@@ -121,7 +127,6 @@ function getMessageContext(target) {
     }
 
     // ── STEP 2: Top-level comment on a post → grab the POST text
-    // Walk up to the post root container
     const postRootSelectors = [
       ".feed-shared-update-v2",
       ".occludable-update",
@@ -147,7 +152,6 @@ function getMessageContext(target) {
       for (const sel of postTextSelectors) {
         const nodes = postRoot.querySelectorAll(sel)
         for (const node of nodes) {
-          // Only accept nodes that are NOT inside the comments section
           if (node.closest(".comments-comments-list, .comments-comment-item, .social-details-social-counts")) continue
           const txt = node.innerText.trim()
           if (txt.length > 10) return txt.slice(0, 1500)
@@ -193,13 +197,29 @@ function getMessageContext(target) {
 
 function insertIntoContentEditable(el, text) {
   el.focus()
-  document.execCommand("selectAll", false, null)
+  const sel = window.getSelection()
+  const range = document.createRange()
+  range.selectNodeContents(el)
+  sel.removeAllRanges()
+  sel.addRange(range)
   document.execCommand("insertText", false, text)
+  el.dispatchEvent(new InputEvent("input", { bubbles: true, cancelable: true, data: text, inputType: "insertText" }))
+}
+
+function setInputValue(el, text) {
+  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set
+    || Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set
+  if (nativeSetter) {
+    nativeSetter.call(el, text)
+  } else {
+    el.value = text
+  }
+  el.dispatchEvent(new Event("input", { bubbles: true }))
+  el.dispatchEvent(new Event("change", { bubbles: true }))
 }
 
 async function enhancePromptInline(target, btn) {
   const originalText = btn.textContent
-  // Read the typed prompt — supports both textarea and contenteditable
   const rawPrompt = (target.value || target.innerText || target.textContent || "").trim()
   if (!rawPrompt) {
     btn.textContent = "Type something first!"
@@ -207,18 +227,23 @@ async function enhancePromptInline(target, btn) {
     return
   }
 
-  // Show loading state
   btn.textContent = "Enhancing..."
   btn.style.opacity = "0.7"
   btn.style.cursor = "default"
   btn.style.pointerEvents = "none"
 
   try {
-    const res = await fetch("https://api.sarvam.ai/v1/chat/completions", {
+    const apiKey = await getApiKey()
+    if (!apiKey) {
+      btn.textContent = "No API key"
+      setTimeout(() => { btn.textContent = originalText }, 2500)
+      return
+    }
+    const data = await apiCall("https://api.sarvam.ai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer sk_o07ycnow_KTGjMr1Z3KBvdS8pIDi4IuUz"
+        "Authorization": `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         model: "sarvam-m",
@@ -228,7 +253,6 @@ async function enhancePromptInline(target, btn) {
         }]
       })
     })
-    const data = await res.json()
     const enhanced = (data.choices?.[0]?.message?.content || "").trim()
       .replace(/<think>[\s\S]*?<\/think>/gi, "")
       .replace(/<\/?think>/gi, "")
@@ -236,22 +260,14 @@ async function enhancePromptInline(target, btn) {
 
     if (!enhanced) throw new Error("Empty response")
 
-    // Insert back into the target field
     if (target.isContentEditable) {
       target.focus()
       document.execCommand("selectAll", false, null)
       document.execCommand("insertText", false, enhanced)
     } else {
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set
-      if (setter) {
-        setter.call(target, enhanced)
-        target.dispatchEvent(new Event("input", { bubbles: true }))
-      } else {
-        target.value = enhanced
-      }
+      setInputValue(target, enhanced)
     }
 
-    // Success feedback on button
     btn.textContent = "Done!"
     btn.style.background = "#16a34a"
     setTimeout(() => {
@@ -276,13 +292,16 @@ async function enhancePromptInline(target, btn) {
 
 function createAIButton(target) {
   if (currentBtn) {
-    forceStopDictation() // Instantly shut down the mic if the user clicks away abruptly
+    forceStopDictation()
     currentBtn.remove()
+    currentBtn = null
+    currentBtnTarget = null
   }
   const platform = getPlatform()
   const isAI = platform.startsWith("ai-")
 
   const container = document.createElement("div")
+  container.id = "smartreply-btn-container"
   container.style.cssText = [
     "position:fixed",
     "z-index:2147483646",
@@ -371,16 +390,14 @@ function createAIButton(target) {
     btn.style.boxShadow = isAI ? "0 1px 6px rgba(79,70,229,0.3)" : "0 1px 6px rgba(0,0,0,0.15)"
     btn.style.transform = "scale(1)"
   }
-  
+
   micBtn.onmouseenter = () => { if (!drag.isDragging) micBtn.style.transform = "scale(1.08)" }
   micBtn.onmouseleave = () => { if (!drag.isDragging) micBtn.style.transform = "scale(1)" }
 
   const rect = target.getBoundingClientRect()
   container.style.top = (rect.bottom + 6) + "px"
-  // Keep the overall group right-aligned
   container.style.left = isAI ? (rect.right - 120) + "px" : (rect.right - 66) + "px"
 
-  // ── Drag support ──
   // ── Drag support ──
   const drag = { isDragging: false, hasDragged: false }
 
@@ -423,7 +440,6 @@ function createAIButton(target) {
     if (isAI) {
       enhancePromptInline(target, btn)
     } else {
-      if (target && typeof target.blur === "function") target.blur()
       openPanel(target)
     }
   })
@@ -463,15 +479,9 @@ function createAIButton(target) {
       target.focus()
       document.execCommand("insertText", false, prefix + text + " ")
     } else {
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set
       const currentVal = target.value || ""
       const newVal = currentVal + (currentVal && !currentVal.endsWith(" ") ? " " : "") + text + " "
-      if (setter) {
-        setter.call(target, newVal)
-        target.dispatchEvent(new Event("input", { bubbles: true }))
-      } else {
-        target.value = newVal
-      }
+      setInputValue(target, newVal)
     }
   }
 
@@ -487,11 +497,17 @@ function createAIButton(target) {
       ].join(";")
 
       try {
-        const res = await fetch("https://api.sarvam.ai/v1/chat/completions", {
+        const apiKey = await getApiKey()
+        if (!apiKey) {
+          micBtn.textContent = "No API key"
+          setTimeout(resetMicUI, 2500)
+          return
+        }
+        const data = await apiCall("https://api.sarvam.ai/v1/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": "Bearer sk_o07ycnow_KTGjMr1Z3KBvdS8pIDi4IuUz"
+            "Authorization": `Bearer ${apiKey}`
           },
           body: JSON.stringify({
             model: "sarvam-m",
@@ -501,7 +517,6 @@ function createAIButton(target) {
             }]
           })
         })
-        const data = await res.json()
         const translated = (data.choices?.[0]?.message?.content || "").trim()
           .replace(/<think>[\s\S]*?<\/think>/gi, "")
           .replace(/<\/?think>/gi, "")
@@ -517,7 +532,7 @@ function createAIButton(target) {
     if (drag.hasDragged) { drag.hasDragged = false; return }
     e.preventDefault()
     e.stopPropagation()
-    
+
     // Stop Dictation
     if (globalIsDictating) {
       forceStopDictation()
@@ -538,17 +553,17 @@ function createAIButton(target) {
 
     // Visualizer UI mapping
     micBtn.style.cssText = [
-      "width:auto", 
-      "height:32px", 
-      "padding:0 12px 0 10px", 
+      "width:auto",
+      "height:32px",
+      "padding:0 12px 0 10px",
       "background:#111",
-      "border:1.5px solid rgba(255,255,255,0.7)", 
+      "border:1.5px solid rgba(255,255,255,0.7)",
       "border-radius:999px",
-      "cursor:pointer", 
-      "display:flex", 
+      "cursor:pointer",
+      "display:flex",
       "align-items:center",
-      "gap:8px", 
-      "transition:all 0.15s", 
+      "gap:8px",
+      "transition:all 0.15s",
       "box-shadow:0 4px 12px rgba(0,0,0,0.3)"
     ].join(";")
 
@@ -580,8 +595,8 @@ function createAIButton(target) {
     const analyser = globalAudioContext.createAnalyser();
     const source = globalAudioContext.createMediaStreamSource(globalMicStream);
     source.connect(analyser);
-    
-    analyser.fftSize = 64; 
+
+    analyser.fftSize = 64;
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
     const bars = micBtn.querySelectorAll(".sr-bar");
@@ -590,19 +605,14 @@ function createAIButton(target) {
     function drawVisualizer() {
       if (!globalIsDictating) return;
       globalAnimFrame = requestAnimationFrame(drawVisualizer);
-      
+
       analyser.getByteFrequencyData(dataArray);
-      // Sample 6 spread out low/mid frequencies representing voice
       const sampleIndices = [2, 4, 6, 8, 10, 12];
-      
+
       for (let i = 0; i < 6; i++) {
-        const val = dataArray[sampleIndices[i]]; // 0 to 255
-        // Map native 0-255 amplitudes to simple 4px-16px heights
-        const targetHeight = 4 + (val / 255) * 12; 
-        
-        // Very fast and springy easing equation
+        const val = dataArray[sampleIndices[i]];
+        const targetHeight = 4 + (val / 255) * 12;
         smoothedHeights[i] = smoothedHeights[i] * 0.7 + targetHeight * 0.3;
-        
         if (bars[i]) {
           bars[i].style.height = `${smoothedHeights[i]}px`;
         }
@@ -630,20 +640,19 @@ function createAIButton(target) {
       const audioBlob = new Blob(globalAudioChunks, { type: 'audio/webm' })
       const formData = new FormData()
       formData.append("file", audioBlob, "recording.webm")
-      
+
       try {
-        const res = await fetch("https://api.sarvam.ai/speech-to-text-translate", {
-          method: "POST",
-          headers: {
-            "api-subscription-key": "sk_o07ycnow_KTGjMr1Z3KBvdS8pIDi4IuUz"
-          },
-          body: formData
-        })
-        if (!res.ok) throw new Error("API Failed")
-        const data = await res.json()
+        const apiKey = await getApiKey()
+        const arrayBuffer = await audioBlob.arrayBuffer()
+        const data = await uploadCall(
+          "https://api.sarvam.ai/speech-to-text-translate",
+          arrayBuffer,
+          "audio/webm",
+          { "api-subscription-key": apiKey }
+        )
         const transcript = data.transcript || data.text || ""
         if (!transcript) throw new Error("Empty Transcript")
-        
+
         await processTranscript(transcript)
       } catch (err) {
         micBtn.textContent = "❌ Error"
@@ -658,6 +667,7 @@ function createAIButton(target) {
   container.appendChild(micBtn)
   document.body.appendChild(container)
   currentBtn = container
+  currentBtnTarget = target
 }
 
 function openPanel(target) {
@@ -665,41 +675,36 @@ function openPanel(target) {
   if (!container) {
     container = document.createElement("div")
     container.id = "smartreply-root"
-    // Prevent panel interactions from triggering the document focusin listener
     container.addEventListener("focusin", (e) => e.stopPropagation())
     container.addEventListener("mousedown", (e) => e.stopPropagation())
     container.addEventListener("click", (e) => e.stopPropagation())
     document.body.appendChild(container)
   }
-  if (!panelRoot) panelRoot = createRoot(container)
+  if (panelRoot) {
+    panelRoot.render(null)
+  }
+  panelRoot = createRoot(container)
 
   const text = getMessageContext(target)
+  const typedText = (target.value || target.innerText || target.textContent || "").trim()
   const platform = getPlatform()
-  // WhatsApp / LinkedIn DM enhance mode: pass the typed text as 'enhanceText'
-  const isEnhance = platform === "whatsapp" || platform === "linkedin-message"
 
   panelRoot.render(
     <FloatingPanel
-      text={isEnhance ? "" : text}
-      enhanceText={isEnhance ? text : undefined}
+      text={text}
+      typedText={typedText}
       platform={platform}
       onInsert={(reply) => {
         if (target.isContentEditable) {
           insertIntoContentEditable(target, reply)
         } else if (target.value !== undefined) {
-          const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set
-          if (setter) {
-            setter.call(target, reply)
-            target.dispatchEvent(new Event("input", { bubbles: true }))
-          } else {
-            target.value = reply
-          }
+          setInputValue(target, reply)
         }
       }}
       onClose={() => {
         panelRoot.render(null)
-        if (currentBtn) currentBtn.remove()
-        currentBtn = null
+        if (currentBtn) { currentBtn.remove(); currentBtn = null; currentBtnTarget = null }
+        lastFocusTarget = null
       }}
     />
   )
@@ -714,10 +719,11 @@ document.addEventListener("focusin", (event) => {
   // Ignore anything inside our own panel
   if (el.closest("#smartreply-root")) return
 
-  // Only handle real text inputs
+  // Only handle real text inputs (ignore checkboxes, radios, buttons, etc.)
+  const textInputTypes = ["text", "password", "email", "number", "search", "tel", "url", ""]
   const isInput = (
     el.tagName === "TEXTAREA" ||
-    (el.tagName === "INPUT" && el.type !== "hidden") ||
+    (el.tagName === "INPUT" && textInputTypes.includes(el.type?.toLowerCase?.() || el.type)) ||
     el.isContentEditable
   )
   if (!isInput) return
@@ -732,7 +738,7 @@ document.addEventListener("focusin", (event) => {
     try {
       // Abort silently if the extension was reloaded/updated to prevent context crashes
       if (!chrome.runtime?.id) return;
-      
+
       chrome.storage.local.get("smartreply_enabled", (res) => {
         if (chrome.runtime.lastError) return // extension invalidated — silently bail
         if (res.smartreply_enabled !== false) createAIButton(el)
@@ -743,8 +749,10 @@ document.addEventListener("focusin", (event) => {
   }, 300)
 })
 
-// Clear lastFocusTarget on blur so re-focusing same element works
-document.addEventListener("focusout", () => {
+// Clear lastFocusTarget on blur so re-focusing same element works,
+// UNLESS focus moved to our own UI (button or panel)
+document.addEventListener("focusout", (e) => {
+  if (e.relatedTarget?.closest("#smartreply-root") || e.relatedTarget?.closest("#smartreply-btn-container")) return
   lastFocusTarget = null
   clearTimeout(focusTimer)
 })
@@ -801,3 +809,20 @@ document.addEventListener("keyup", (e) => {
     }
   }
 })
+
+// Keep the SR button anchored to its textarea when the page scrolls or resizes
+function updateButtonPosition() {
+  if (!currentBtn || !currentBtnTarget) return
+  if (!document.contains(currentBtnTarget)) {
+    currentBtn.remove()
+    currentBtn = null
+    currentBtnTarget = null
+    return
+  }
+  const rect = currentBtnTarget.getBoundingClientRect()
+  const isAI = getPlatform().startsWith("ai-")
+  currentBtn.style.top = (rect.bottom + 6) + "px"
+  currentBtn.style.left = isAI ? (rect.right - 120) + "px" : (rect.right - 66) + "px"
+}
+window.addEventListener("scroll", updateButtonPosition, true)
+window.addEventListener("resize", updateButtonPosition)

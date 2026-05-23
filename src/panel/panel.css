@@ -570,3 +570,54 @@
   background: #e5e7eb !important;
   border-radius: 3px !important;
 }
+
+/* ── Mode chips ── */
+#smartreply-root .mode-chips {
+  all: unset !important;
+  display: flex !important;
+  gap: 6px !important;
+  margin: 0 0 12px 0 !important;
+  overflow-x: auto !important;
+  padding-bottom: 2px !important;
+}
+
+#smartreply-root .mode-chip {
+  all: unset !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 5px 10px !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 999px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #4b5563 !important;
+  background: #fff !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  transition: all 0.15s !important;
+  box-sizing: border-box !important;
+}
+
+#smartreply-root .mode-chip.active {
+  background: #4f46e5 !important;
+  color: #fff !important;
+  border-color: #4f46e5 !important;
+}
+
+#smartreply-root .mode-chip:hover:not(.active) {
+  background: #f3f4f6 !important;
+}
+
+/* ── Context warning ── */
+#smartreply-root .context-warning {
+  all: unset !important;
+  display: block !important;
+  padding: 8px 10px !important;
+  background: #fef2f2 !important;
+  border: 1px solid #fecaca !important;
+  border-radius: 6px !important;
+  font-size: 11px !important;
+  color: #b91c1c !important;
+  font-style: italic !important;
+}

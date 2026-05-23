@@ -21,6 +21,19 @@ const buildContentScript = {
   }
 }
 
+const buildBackgroundScript = {
+  name: "build-background-script",
+  async writeBundle() {
+    await esbuild.build({
+      entryPoints: ["src/background/background.js"],
+      bundle: true,
+      outfile: "dist/background.js",
+      format: "iife",
+      minify: true,
+    })
+  }
+}
+
 const copyManifest = {
   name: "copy-manifest",
   writeBundle() {
@@ -36,7 +49,8 @@ const copyManifest = {
 }
 
 export default defineConfig({
-  plugins: [react(), buildContentScript, copyManifest],
+  base: "./",
+  plugins: [react(), buildContentScript, buildBackgroundScript, copyManifest],
   publicDir: "public",
   build: {
     outDir: "dist",

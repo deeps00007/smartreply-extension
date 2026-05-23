@@ -1,13 +1,28 @@
 import React, { useState, useRef, useEffect } from "react"
 import "./panel.css"
+import { apiCall } from "../shared/api.js"
 
-export default function FloatingPanel({ text, enhanceText, platform, onInsert, onClose }) {
+function getApiKey() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get("smartreply_api_key", (res) => {
+      resolve(res.smartreply_api_key || "")
+    })
+  })
+}
 
-  const isEnhance = platform === "whatsapp" || platform === "linkedin-message"
-  const isPromptEnhancer = platform?.startsWith("ai-")
-  const isCompose = !isEnhance && !isPromptEnhancer && !text
+export default function FloatingPanel({ text, typedText, platform, onInsert, onClose }) {
+  const isAI = platform?.startsWith("ai-")
+
+  const defaultMode = (() => {
+    if (isAI) return "prompt-enhancer"
+    if (text && text.length > 10) return "reply"
+    if (typedText && typedText.length > 5) return "enhance"
+    return "compose"
+  })()
+
+  const [mode, setMode] = useState(defaultMode)
   const [topic, setTopic] = useState("")
-  const [userMsg, setUserMsg] = useState(enhanceText || "")
+  const [userMsg, setUserMsg] = useState(typedText || "")
   const [tone, setTone] = useState("Friendly")
   const [language, setLanguage] = useState("English")
   const [humanize, setHumanize] = useState(true)
@@ -15,14 +30,18 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [inserted, setInserted] = useState(false)
-  
+
   const replyRef = useRef(null)
   const topicInputRef = useRef(null)
   const msgInputRef = useRef(null)
 
-  // Dragging — use document-level listeners so drag works even when pointer leaves the header
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const dragInfo = useRef(null)
+
+  // Sync typedText when prop changes (panel re-opened on same mount edge-case)
+  useEffect(() => {
+    setUserMsg(typedText || "")
+  }, [typedText])
 
   const handleMouseDown = (e) => {
     if (e.target.closest('.panel-close')) return
@@ -48,17 +67,16 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
     document.addEventListener('mouseup', onUp)
   }
 
-  // Forcefully steal focus after a short delay to defeat aggressive host page focus traps
   useEffect(() => {
     const timer = setTimeout(() => {
-      if ((isCompose || isPromptEnhancer) && topicInputRef.current) {
+      if ((mode === "compose" || mode === "email") && topicInputRef.current) {
         topicInputRef.current.focus()
-      } else if (isEnhance && msgInputRef.current) {
+      } else if ((mode === "enhance" || mode === "prompt-enhancer") && msgInputRef.current) {
         msgInputRef.current.focus()
       }
     }, 150)
     return () => clearTimeout(timer)
-  }, [isCompose, isEnhance, isPromptEnhancer])
+  }, [mode])
 
   const humanizeInstruction = humanize
     ? " IMPORTANT: Write like a real human. Be concise (1-3 sentences maximum). Avoid generic agreements ('That's so true', 'I completely agree'). Get straight to the point. Use natural, conversational language. DO NOT sound like an enthusiastic AI giving a speech."
@@ -72,35 +90,41 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
     setInserted(false)
     try {
       let prompt
-      if (isPromptEnhancer) {
+      if (isAI || mode === "prompt-enhancer") {
         const userPromptText = userMsg.trim() || topic.trim()
         prompt = `Revise the following raw idea into a highly effective prompt for an AI to execute. \nIMPORTANT RULES:\n1. Write ONLY what the user should actually send to the AI to get the best result.\n2. DO NOT include meta-instructions in your output (like "Act as an expert" or "Rewrite this").\n3. DO NOT output labels like "Improved prompt:".\n4. Transform the raw idea into direct instructions (e.g. "Write a list of features..." instead of "The user wants a list...").\n\nRaw idea:\n${userPromptText}`
-      } else if (isEnhance) {
-        const msgType = platform === "linkedin-message" ? "LinkedIn message" : "WhatsApp message"
+      } else if (mode === "enhance") {
+        const msgType = platform === "linkedin-message" ? "LinkedIn message" : platform === "whatsapp" ? "WhatsApp message" : "message"
         prompt = `Improve the grammar and tone of this ${msgType}. Keep the meaning identical. Output ONLY the improved message with no explanation, no labels, no quotes, no extra text.${humanizeInstruction}\n\n${userMsg}\n\nTone: ${tone}. Language: ${language}.`
-      } else if (isCompose) {
-        prompt = `Write a ${platform === "linkedin" ? "short LinkedIn post" : platform === "twitter" ? "brief tweet" : "short social media post"} about: ${topic || "general"}. Tone: ${tone}. Language: ${language}. Output ONLY the post text. No labels, no quotes.${humanizeInstruction}`
+      } else if (mode === "compose") {
+        const postType = platform === "linkedin" ? "short LinkedIn post" : platform === "twitter" ? "brief tweet" : platform === "reddit" ? "Reddit comment" : platform === "youtube" ? "YouTube comment" : "short social media post"
+        prompt = `Write a ${postType} about: ${topic || "general"}. Tone: ${tone}. Language: ${language}. Output ONLY the post text. No labels, no quotes.${humanizeInstruction}`
+      } else if (mode === "email") {
+        prompt = `Write a ${tone.toLowerCase()} email about: ${topic || "general"}. Language: ${language}. Include a subject line at the top (format: Subject: ...). Output ONLY the email text. No extra labels or explanations.${humanizeInstruction}`
       } else {
+        // reply mode
         prompt = `Write a brief, natural reply to this message. Tone: ${tone}. Language: ${language}. Output ONLY the exact text to type into the reply box. No labels, no quotes. DO NOT start with generic fluff like "That's a great point" or "I totally agree".${humanizeInstruction}\n\nMessage to reply to:\n${text}`
       }
 
-      const res = await fetch(
-        "https://api.sarvam.ai/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer sk_o07ycnow_KTGjMr1Z3KBvdS8pIDi4IuUz"
-          },
-          body: JSON.stringify({
-            model: "sarvam-m",
-            messages: [{ role: "user", content: prompt }]
-          })
-        }
-      )
-      const data = await res.json()
+      const apiKey = await getApiKey()
+      if (!apiKey) {
+        throw new Error("No API key found. Open the SmartReply popup and paste your Sarvam API key.")
+      }
+      const data = await apiCall("https://api.sarvam.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: "sarvam-m",
+          messages: [{ role: "user", content: prompt }]
+        })
+      })
+
       const raw = data.choices[0].message.content.trim()
       const clean = raw
+        .replace(/  /gi, " ")
         .replace(/<think>[\s\S]*?<\/think>/gi, "")
         .replace(/<\/?think>/gi, "")
         .replace(/^[-–—]{2,}\s*$/gm, "")
@@ -120,13 +144,14 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
         .trim()
       setReply(clean)
     } catch (e) {
-      setReply("Error generating reply. Please try again.")
+      let msg = "Error generating reply. Please try again."
+      if (e?.message) msg += ` (${e.message})`
+      setReply(msg)
     } finally {
       setLoading(false)
     }
   }
 
-  // Auto-scroll output into view when reply arrives
   useEffect(() => {
     if (reply && replyRef.current) {
       replyRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" })
@@ -149,7 +174,6 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
     setTimeout(() => setInserted(false), 1500)
   }
 
-  // Ctrl+Enter to generate
   const handleKeyDown = (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault()
@@ -158,6 +182,14 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
   }
 
   const charCount = reply.length
+
+  const modeLabel = {
+    reply: "Generate Reply",
+    enhance: "Enhance",
+    compose: "Create Post",
+    email: "Draft Email",
+    "prompt-enhancer": "Enhance Prompt"
+  }[mode] || "Generate"
 
   return (
     <div 
@@ -171,42 +203,39 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
         className="panel-header"
         onMouseDown={handleMouseDown}
       >
-        <h3>{isPromptEnhancer ? "Prompt Enhancer" : "SmartReply AI"}</h3>
-        <button className="panel-close" onClick={onClose} title="Close">✕</button>
+        <h3>{isAI ? "Prompt Enhancer" : "SmartReply AI"}</h3>
+        <button className="panel-close" onClick={onClose} title="Close">&#x2715;</button>
       </div>
 
-      {/* Enhance mode: editable draft */}
-      {isEnhance && (
-        <div className="panel-field" style={{ marginBottom: "10px" }}>
-          <label>Your message</label>
-          <textarea
-            ref={msgInputRef}
-            className="input-area"
-            value={userMsg}
-            placeholder="Type your message here..."
-            onChange={(e) => setUserMsg(e.target.value)}
-            autoFocus
-          />
+      {/* Mode chips for non-AI sites */}
+      {!isAI && (
+        <div className="mode-chips">
+          {[
+            { id: "reply", label: "Reply" },
+            { id: "enhance", label: "Enhance" },
+            { id: "compose", label: "Create Post" },
+            { id: "email", label: "Draft Email" },
+          ].map((m) => (
+            <button
+              key={m.id}
+              className={`mode-chip ${mode === m.id ? "active" : ""}`}
+              onClick={() => { setMode(m.id); setReply("") }}
+            >
+              {m.label}
+            </button>
+          ))}
         </div>
       )}
 
-      {/* Reply mode: context preview */}
-      {!isCompose && !isEnhance && (
-        <div className="context-box">
-          <span className="context-label">Replying to</span>
-          <p className="context-text">{text}</p>
-        </div>
-      )}
-
-      {/* Prompt Enhancer mode: show typed prompt */}
-      {isPromptEnhancer && (
+      {/* Prompt enhancer mode (AI sites) */}
+      {isAI && (
         <div className="panel-field" style={{ marginBottom: "10px" }}>
           <label>Your prompt</label>
           <textarea
-            ref={topicInputRef}
+            ref={msgInputRef}
             className="input-area"
             value={userMsg || topic}
-            placeholder="Type your prompt here (or it will be read from the page)..."
+            placeholder="Type your prompt here..."
             onChange={(e) => { setUserMsg(e.target.value); setTopic(e.target.value) }}
             autoFocus
             style={{ height: "80px" }}
@@ -214,10 +243,37 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
         </div>
       )}
 
-      {/* Compose mode: topic */}
-      {isCompose && (
+      {/* Reply mode context */}
+      {mode === "reply" && (
+        <div className="context-box" style={{ marginBottom: "10px" }}>
+          <span className="context-label">Replying to</span>
+          {text ? (
+            <p className="context-text">{text}</p>
+          ) : (
+            <p className="context-warning">No context found. The AI will reply without knowing what you are responding to.</p>
+          )}
+        </div>
+      )}
+
+      {/* Enhance mode */}
+      {mode === "enhance" && (
         <div className="panel-field" style={{ marginBottom: "10px" }}>
-          <label>Topic</label>
+          <label>Your draft</label>
+          <textarea
+            ref={msgInputRef}
+            className="input-area"
+            value={userMsg}
+            placeholder="Paste or type your draft here..."
+            onChange={(e) => setUserMsg(e.target.value)}
+            autoFocus
+          />
+        </div>
+      )}
+
+      {/* Compose mode */}
+      {mode === "compose" && (
+        <div className="panel-field" style={{ marginBottom: "10px" }}>
+          <label>Post topic</label>
           <input
             ref={topicInputRef}
             type="text"
@@ -230,8 +286,24 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
         </div>
       )}
 
+      {/* Email mode */}
+      {mode === "email" && (
+        <div className="panel-field" style={{ marginBottom: "10px" }}>
+          <label>Email subject / intent</label>
+          <input
+            ref={topicInputRef}
+            type="text"
+            className="topic-input"
+            placeholder="e.g. follow-up with client, project update..."
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            autoFocus
+          />
+        </div>
+      )}
+
       {/* Controls row: Tone + Language (hidden for prompt enhancer) */}
-      {!isPromptEnhancer && <div className="panel-row">
+      {!isAI && <div className="panel-row">
         <div className="panel-field">
           <label>Tone</label>
           <select value={tone} onChange={(e) => setTone(e.target.value)}>
@@ -251,7 +323,7 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
       </div>}
 
       {/* Humanize toggle */}
-      {!isPromptEnhancer && <div className="humanize-row">
+      {!isAI && <div className="humanize-row">
         <div className="humanize-label">
           <span className="humanize-text">Humanize</span>
         </div>
@@ -274,12 +346,12 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
               Generating...
             </span>
           ) : (
-            isEnhance ? "Enhance" : isCompose ? "Generate Post" : "Generate Reply"
+            modeLabel
           )}
         </button>
         {reply && !loading && (
           <button className="regen-btn" onClick={generateReply} title="Regenerate">
-            ↻
+            &#x21BB;
           </button>
         )}
       </div>
@@ -304,10 +376,10 @@ export default function FloatingPanel({ text, enhanceText, platform, onInsert, o
                 <span className="char-count">{charCount} chars</span>
                 <div className="action-buttons">
                   <button className="action-btn copy-btn" onClick={handleCopy}>
-                    {copied ? "✓ Copied" : "Copy"}
+                    {copied ? "Copied" : "Copy"}
                   </button>
                   <button className="action-btn insert-btn" onClick={handleInsert}>
-                    {inserted ? "✓ Done" : isEnhance ? "Replace" : "Insert"}
+                    {inserted ? "Done" : mode === "enhance" ? "Replace" : "Insert"}
                   </button>
                 </div>
               </div>

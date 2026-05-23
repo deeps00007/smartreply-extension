@@ -75,11 +75,16 @@ function Popup() {
   const defaultPtt = { code: "F5", key: "F5", ctrl: false, alt: false, shift: false, meta: false }
   const [ptt, setPtt] = useState(defaultPtt)
   const [recording, setRecording] = useState(false)
+  const [apiKeyInput, setApiKeyInput] = useState("")
+  const [savedKeyExists, setSavedKeyExists] = useState(false)
 
   useEffect(() => {
-    chrome.storage.local.get(["smartreply_enabled", "smartreply_ptt"], (res) => {
+    chrome.storage.local.get(["smartreply_enabled", "smartreply_ptt", "smartreply_api_key"], (res) => {
       setEnabled(res.smartreply_enabled !== false)
       if (res.smartreply_ptt) setPtt(res.smartreply_ptt)
+      const key = res.smartreply_api_key || ""
+      setSavedKeyExists(!!key)
+      setApiKeyInput(key)
     })
   }, [])
 
@@ -169,11 +174,53 @@ function Popup() {
       <div style={styles.sectionTitle}>Settings</div>
       <div style={styles.settingRow}>
         <div style={styles.settingLabel}>Push-to-Talk Shortcut</div>
-        <button 
-          onClick={() => setRecording(true)} 
+        <button
+          onClick={() => setRecording(true)}
           style={{...styles.hotkeyBtn, background: recording ? "#e0e7ff" : "#f3f4f6", color: recording ? "#4f46e5" : "#374151"}}
         >
           {recording ? "Listening..." : formatPtt(ptt)}
+        </button>
+      </div>
+      {/* API Key Section */}
+      <div style={styles.settingRow}>
+        <div style={styles.settingLabel}>Sarvam API Key</div>
+        <div style={styles.keyStatus(savedKeyExists)}>
+          {savedKeyExists ? "Saved" : "Not Set"}
+        </div>
+      </div>
+      <div style={styles.apiKeyRow}>
+        <input
+          type="password"
+          value={apiKeyInput}
+          onChange={(e) => setApiKeyInput(e.target.value.trim())}
+          placeholder="Paste your key here..."
+          style={styles.apiKeyInput}
+        />
+      </div>
+      <div style={styles.apiKeyActions}>
+        <button
+          onClick={() => {
+            if (!apiKeyInput) return
+            chrome.storage.local.set({ smartreply_api_key: apiKeyInput }, () => {
+              setSavedKeyExists(true)
+            })
+          }}
+          disabled={!apiKeyInput}
+          style={{...styles.actionBtn, ...styles.saveBtn, opacity: apiKeyInput ? 1 : 0.5}}
+        >
+          Save
+        </button>
+        <button
+          onClick={() => {
+            chrome.storage.local.remove("smartreply_api_key", () => {
+              setSavedKeyExists(false)
+              setApiKeyInput("")
+            })
+          }}
+          disabled={!savedKeyExists}
+          style={{...styles.actionBtn, ...styles.deleteBtn, opacity: savedKeyExists ? 1 : 0.5}}
+        >
+          Delete
         </button>
       </div>
 
@@ -343,7 +390,53 @@ const styles = {
     padding: "12px 14px 14px",
     borderTop: "1px solid #f3f4f6",
     marginTop: 12,
-  }
+  },
+  keyStatus: (saved) => ({
+    fontSize: 10,
+    fontWeight: 700,
+    padding: "2px 8px",
+    borderRadius: 4,
+    background: saved ? "#dcfce7" : "#fee2e2",
+    color: saved ? "#16a34a" : "#dc2626",
+    border: `1px solid ${saved ? "#bbf7d0" : "#fecaca"}`,
+  }),
+  apiKeyRow: {
+    padding: "0 14px 6px",
+  },
+  apiKeyInput: {
+    width: "100%",
+    padding: "6px 8px",
+    border: "1px solid #e5e7eb",
+    borderRadius: 6,
+    fontSize: 11,
+    fontFamily: "monospace",
+    outline: "none",
+    boxSizing: "border-box",
+  },
+  apiKeyActions: {
+    display: "flex",
+    gap: 8,
+    padding: "0 14px 8px",
+  },
+  actionBtn: {
+    flex: 1,
+    padding: "6px 0",
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: "pointer",
+    border: "none",
+    transition: "all 0.15s",
+  },
+  saveBtn: {
+    background: "#4f46e5",
+    color: "#fff",
+  },
+  deleteBtn: {
+    background: "#f3f4f6",
+    color: "#374151",
+    border: "1px solid #e5e7eb",
+  },
 }
 
 createRoot(document.getElementById("root")).render(<Popup />)
